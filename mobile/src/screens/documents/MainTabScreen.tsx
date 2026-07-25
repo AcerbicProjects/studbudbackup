@@ -12,6 +12,7 @@ import UploadScreen from './UploadScreen';
 import BottomNavBar from '../../components/documents/BottomNavBar';
 import FloatingUploadButton from '../../components/documents/FloatingUploadButton';
 import DocumentDetailScreen from './DocumentDetailScreen';
+import ProfileTab from './ProfileTab';
 
 import DashboardScreen from '../dashboard/DashboardScreen';
 import AnalyticsScreen from '../dashboard/AnalyticsScreen';
@@ -102,7 +103,7 @@ export const MainTabScreen: React.FC = () => {
                     />
                 );
             case 'Profile':
-                return renderProfileMock();
+                return <ProfileTab />;
             default:
                 return <HomeScreen onNavigateToTab={setActiveTab} onSelectDocument={handleSelectDocument} />;
         }
@@ -129,45 +130,6 @@ export const MainTabScreen: React.FC = () => {
         </ScrollView>
     );
 
-    const renderProfileMock = () => {
-        const displayName = user?.fullName || 'Guest User';
-        const displayEmail = user?.email || 'guest@university.edu';
-        const displayUniversity = user?.university || 'University';
-        const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
-
-        return (
-            <ScrollView
-                style={[styles.mockBg, { backgroundColor: colors.background }]}
-                contentContainerStyle={[styles.mockScrollContent, { paddingTop: Math.max(insets.top, 24) }]}
-            >
-                <Text style={[styles.mockTitle, { color: colors.text, fontSize: typography.fontSize.xl + 2 }]}>
-                    Student Profile
-                </Text>
-                <View style={[styles.mockGlassCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}>
-                    {user?.profilePhoto ? (
-                        <Image source={{ uri: user.profilePhoto }} style={styles.profileAvatarImage} />
-                    ) : (
-                        <View style={[styles.avatarMock, { backgroundColor: '#8B5CF6' }]}>
-                            <Text style={styles.avatarLabel}>{initials}</Text>
-                        </View>
-                    )}
-                    <Text style={[styles.mockHeadline, { color: colors.text, fontSize: typography.fontSize.md }]}>
-                        {displayName}
-                    </Text>
-                    <Text style={[styles.mockSubTitle, { color: colors.textMuted, textAlign: 'center' }]}>
-                        {displayEmail} • {displayUniversity}
-                    </Text>
-
-                    <TouchableOpacity 
-                        style={[styles.logoutButton, { backgroundColor: colors.error || '#EF4444' }]} 
-                        onPress={logout}
-                    >
-                        <Text style={styles.logoutButtonText}>Sign Out</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        );
-    };
 
     return (
         <View style={styles.mainContainer}>

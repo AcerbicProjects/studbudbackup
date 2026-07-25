@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './config/db';
 import authRoutes from './routes/auth';
+import userRoutes from './routes/user';
+import path from 'path';
 
 dotenv.config();
 
@@ -18,6 +20,8 @@ app.use(express.json());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/user', userRoutes);
+app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

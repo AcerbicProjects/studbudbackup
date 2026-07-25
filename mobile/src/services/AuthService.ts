@@ -6,6 +6,8 @@ export interface UserProfile {
   email: string;
   university: string;
   studentId: string;
+  semester?: string;
+  department?: string;
   profilePhoto?: string;
   emailVerified: boolean;
   createdAt: string;
