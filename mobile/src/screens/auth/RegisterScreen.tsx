@@ -15,12 +15,14 @@ import ThemeToggle from '../../components/auth/ThemeToggle';
 import ErrorSnackbar from '../../components/auth/ErrorSnackbar';
 import IllustrationContainer from '../../components/auth/IllustrationContainer';
 import GlassCard from '../../components/auth/GlassCard';
+import { useAuth } from '../../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
 export const RegisterScreen = () => {
   const { colors, spacing, borderRadius, typography } = useTheme();
   const navigation = useNavigation<NavigationProp<AuthStackParamList>>();
+  const { register } = useAuth();
 
   // Form Field States
   const [fullName, setFullName] = useState('');
@@ -142,7 +144,7 @@ export const RegisterScreen = () => {
     }
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     handleFullNameChange(fullName);
     handleUniversityChange(university);
     handleStudentIdChange(studentId);
@@ -158,7 +160,7 @@ export const RegisterScreen = () => {
       isPasswordValid &&
       isConfirmPasswordValid;
 
-    if (!isFormValid) {
+    if (!isFormValid || !fullName || !university || !studentId || !email || !password) {
       setSnackbarType('error');
       setSnackbarMessage('Please correct the validation errors first.');
       setSnackbarVisible(true);
@@ -173,17 +175,24 @@ export const RegisterScreen = () => {
     }
 
     setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      await register({
+        fullName,
+        email: email.toLowerCase(),
+        password,
+        university,
+        studentId,
+      });
       setSnackbarType('success');
       setSnackbarMessage('Account created successfully! Redirecting...');
       setSnackbarVisible(true);
-
-      setTimeout(() => {
-        navigation.navigate('Login');
-      }, 1500);
-    }, 2000);
+    } catch (err: any) {
+      setSnackbarType('error');
+      setSnackbarMessage(err.message || 'Registration failed. Please try again.');
+      setSnackbarVisible(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

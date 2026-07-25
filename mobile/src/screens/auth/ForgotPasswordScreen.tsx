@@ -14,6 +14,7 @@ import ThemeToggle from '../../components/auth/ThemeToggle';
 import ErrorSnackbar from '../../components/auth/ErrorSnackbar';
 import IllustrationContainer from '../../components/auth/IllustrationContainer';
 import GlassCard from '../../components/auth/GlassCard';
+import AuthService from '../../services/AuthService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,29 +51,25 @@ export const ForgotPasswordScreen = () => {
     }
   };
 
-  const handleSendLink = () => {
-    validateEmail(email);
-
-    if (!isEmailValid || !email) {
-      setSnackbarType('error');
-      setSnackbarMessage('Please enter a valid email address first.');
-      setSnackbarVisible(true);
+  const handleSendLink = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      setEmailError('Please enter a valid email address first.');
+      setIsEmailValid(false);
       return;
     }
 
     setIsLoading(true);
-
-    setTimeout(() => {
+    try {
+      await AuthService.forgotPassword(email.toLowerCase());
+      setIsSubmitted(true);
+    } catch (err: any) {
+      setSnackbarType('error');
+      setSnackbarMessage(err.message || 'Request failed. Please try again.');
+      setSnackbarVisible(true);
+    } finally {
       setIsLoading(false);
-
-      if (email.toLowerCase() === 'error@studybuddy.com') {
-        setSnackbarType('error');
-        setSnackbarMessage('This email address is not registered in our system.');
-        setSnackbarVisible(true);
-      } else {
-        setIsSubmitted(true);
-      }
-    }, 2000);
+    }
   };
 
   return (

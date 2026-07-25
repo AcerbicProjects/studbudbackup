@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuth } from '../../context/AuthContext';
 
 import HomeScreen from './HomeScreen';
 import DocumentsScreen from './DocumentsScreen';
@@ -21,6 +22,7 @@ import NotificationsScreen from '../dashboard/NotificationsScreen';
 export const MainTabScreen: React.FC = () => {
     const { colors, typography, borderRadius } = useTheme();
     const insets = useSafeAreaInsets();
+    const { user, logout } = useAuth();
 
     const [activeTab, setActiveTab] = useState('Home');
     const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -127,27 +129,45 @@ export const MainTabScreen: React.FC = () => {
         </ScrollView>
     );
 
-    const renderProfileMock = () => (
-        <ScrollView
-            style={[styles.mockBg, { backgroundColor: colors.background }]}
-            contentContainerStyle={[styles.mockScrollContent, { paddingTop: Math.max(insets.top, 24) }]}
-        >
-            <Text style={[styles.mockTitle, { color: colors.text, fontSize: typography.fontSize.xl + 2 }]}>
-                Student Profile
-            </Text>
-            <View style={[styles.mockGlassCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}>
-                <View style={[styles.avatarMock, { backgroundColor: '#8B5CF6' }]}>
-                    <Text style={styles.avatarLabel}>AS</Text>
+    const renderProfileMock = () => {
+        const displayName = user?.fullName || 'Guest User';
+        const displayEmail = user?.email || 'guest@university.edu';
+        const displayUniversity = user?.university || 'University';
+        const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+
+        return (
+            <ScrollView
+                style={[styles.mockBg, { backgroundColor: colors.background }]}
+                contentContainerStyle={[styles.mockScrollContent, { paddingTop: Math.max(insets.top, 24) }]}
+            >
+                <Text style={[styles.mockTitle, { color: colors.text, fontSize: typography.fontSize.xl + 2 }]}>
+                    Student Profile
+                </Text>
+                <View style={[styles.mockGlassCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}>
+                    {user?.profilePhoto ? (
+                        <Image source={{ uri: user.profilePhoto }} style={styles.profileAvatarImage} />
+                    ) : (
+                        <View style={[styles.avatarMock, { backgroundColor: '#8B5CF6' }]}>
+                            <Text style={styles.avatarLabel}>{initials}</Text>
+                        </View>
+                    )}
+                    <Text style={[styles.mockHeadline, { color: colors.text, fontSize: typography.fontSize.md }]}>
+                        {displayName}
+                    </Text>
+                    <Text style={[styles.mockSubTitle, { color: colors.textMuted, textAlign: 'center' }]}>
+                        {displayEmail} • {displayUniversity}
+                    </Text>
+
+                    <TouchableOpacity 
+                        style={[styles.logoutButton, { backgroundColor: colors.error || '#EF4444' }]} 
+                        onPress={logout}
+                    >
+                        <Text style={styles.logoutButtonText}>Sign Out</Text>
+                    </TouchableOpacity>
                 </View>
-                <Text style={[styles.mockHeadline, { color: colors.text, fontSize: typography.fontSize.md }]}>
-                    Abrar Shahriar
-                </Text>
-                <Text style={[styles.mockSubTitle, { color: colors.textMuted }]}>
-                    student@university.edu • Premium tier active
-                </Text>
-            </View>
-        </ScrollView>
-    );
+            </ScrollView>
+        );
+    };
 
     return (
         <View style={styles.mainContainer}>
@@ -216,6 +236,24 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: 18,
         fontWeight: '800',
+    },
+    logoutButton: {
+        marginTop: 24,
+        width: '100%',
+        height: 48,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    logoutButtonText: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+        fontSize: 15,
+    },
+    profileAvatarImage: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
     },
 });
 
