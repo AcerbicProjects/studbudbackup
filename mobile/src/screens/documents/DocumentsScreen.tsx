@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions, ActivityIndicator, Alert, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 
 import SearchBar from '../../components/documents/SearchBar';
 import DocumentCard, { DocumentMock } from '../../components/documents/DocumentCard';
-import { documents as mockDocs } from '../../data/documents';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../lib/api';
 
 const { width } = Dimensions.get('window');
 
@@ -26,16 +29,110 @@ interface DocumentsScreenProps {
 export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocument }) => {
     const { colors, typography, borderRadius } = useTheme();
     const insets = useSafeAreaInsets();
+    const { user } = useAuth();
 
     const [activeCategory, setActiveCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [isGridView, setIsGridView] = useState(false);
-    const [documentsState, setDocumentsState] = useState<DocumentMock[]>(mockDocs);
+    const [documentsState, setDocumentsState] = useState<DocumentMock[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [categories, setCategories] = useState<string[]>(SUBJECT_CATEGORIES);
 
-    const handleFavoriteToggle = (id: string) => {
+    useFocusEffect(
+        useCallback(() => {
+            const loadCategories = async () => {
+                try {
+                    const stored = await AsyncStorage.getItem('@custom_subjects');
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        setCategories(['All', ...parsed.map((s: any) => s.name)]);
+                    }
+                } catch (err) {
+                    console.warn('Failed to load custom subjects in Documents Screen');
+                }
+            };
+            loadCategories();
+        }, [])
+    );
+
+    const handleDeleteCategory = (categoryName: string) => {
+        if (categoryName === 'All') return;
+
+        const executeDelete = async () => {
+            try {
+                const stored = await AsyncStorage.getItem('@custom_subjects');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    const updated = parsed.filter((s: any) => s.name !== categoryName);
+                    await AsyncStorage.setItem('@custom_subjects', JSON.stringify(updated));
+                    setCategories(['All', ...updated.map((s: any) => s.name)]);
+                    if (activeCategory === categoryName) {
+                        setActiveCategory('All');
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to delete category');
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            const ok = window.confirm(`Remove subject '${categoryName}'?`);
+            if (ok) executeDelete();
+        } else {
+            Alert.alert(
+                "Remove Subject",
+                `Are you sure you want to delete '${categoryName}'? Documents under this subject will remain.`,
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Remove", style: "destructive", onPress: executeDelete }
+                ]
+            );
+        }
+    };
+
+    useFocusEffect(
+        useCallback(() => {
+            const fetchDocs = async () => {
+                if (!user) return;
+                setIsLoading(true);
+                try {
+                    const response = await api.get('/api/documents');
+                    const data = response.data;
+                    const fetched = Array.isArray(data) ? data : (data.docs || data.documents || []);
+                    const mapped: DocumentMock[] = fetched.map((doc: any) => ({
+                        id: doc._id || doc.id,
+                        title: doc.title,
+                        subject: doc.subject,
+                        pages: doc.pageCount || 0,
+                        lastOpened: doc.updatedAt,
+                        studyTime: '0 min',
+                        progress: 0,
+                        favorite: !!doc.favorite,
+                        thumbnail: doc.thumbnail,
+                    }));
+                    setDocumentsState(mapped);
+                } catch (err) {
+                    console.error('Failed to fetch documents:', err);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            fetchDocs();
+        }, [user])
+    );
+
+    const handleFavoriteToggle = async (id: string) => {
         setDocumentsState((prev) =>
             prev.map((doc) => (doc.id === id ? { ...doc, favorite: !doc.favorite } : doc))
         );
+        try {
+            const doc = documentsState.find(d => d.id === id);
+            if (doc) {
+                await api.patch(`/api/documents/${id}`, { favorite: !doc.favorite });
+            }
+        } catch (err) {
+            console.error('Failed to update favorite status:', err);
+        }
     };
 
     const getSubjectColor = (subj: string) => {
@@ -90,7 +187,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                 <FlatList
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    data={SUBJECT_CATEGORIES}
+                    data={categories}
                     keyExtractor={(item) => item}
                     style={styles.tagsScroll}
                     renderItem={({ item }) => {
@@ -98,6 +195,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                         return (
                             <TouchableOpacity
                                 onPress={() => setActiveCategory(item)}
+                                onLongPress={() => handleDeleteCategory(item)}
                                 style={[
                                     styles.filterTag,
                                     {

@@ -38,10 +38,11 @@ const TOOLS: Tool[] = [
 
 interface AIHomeScreenProps {
     onBack?: () => void;
+    documentId: string;
 }
 
 // Entry hub for the AI tools generated from a document.
-const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
+const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack, documentId }) => {
     const { colors, borderRadius, typography, shadows } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
@@ -94,7 +95,7 @@ const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
                                 borderRadius: borderRadius.xl,
                             },
                         ]}
-                        onPress={() => navigation.navigate(tool.route as any)}
+                        onPress={() => navigation.navigate(tool.route as any, { documentId })}
                         accessibilityRole="button"
                         accessibilityLabel={`Open ${tool.title}`}
                     >
@@ -117,9 +118,10 @@ const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
 
 interface AINavigatorProps {
     onBack?: () => void;
+    documentId: string;
 }
 
-export const AINavigator: React.FC<AINavigatorProps> = ({ onBack }) => {
+export const AINavigator: React.FC<AINavigatorProps> = ({ onBack, documentId }) => {
     return (
         <Stack.Navigator
             initialRouteName="AIHome"
@@ -129,7 +131,7 @@ export const AINavigator: React.FC<AINavigatorProps> = ({ onBack }) => {
             }}
         >
             <Stack.Screen name="AIHome">
-                {() => <AIHomeScreen onBack={onBack} />}
+                {() => <AIHomeScreen onBack={onBack} documentId={documentId} />}
             </Stack.Screen>
             <Stack.Screen name="Chat" component={ChatScreen} />
             <Stack.Screen name="Summary" component={SummaryScreen} />

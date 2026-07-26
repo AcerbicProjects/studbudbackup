@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions, Platform, TextInput } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
+import axios from 'axios';
+import api from '../../lib/api';
+import TokenManager from '../../services/TokenManager';
 
 const { width } = Dimensions.get('window');
 
@@ -14,9 +18,15 @@ const STORAGE_PROVIDERS = [
     { id: 'onedrive', name: 'OneDrive', icon: 'cloud-upload-outline', color: '#0EA5E9' },
 ];
 
-export const UploadScreen: React.FC = () => {
+interface UploadScreenProps {
+    initialSubject?: string;
+}
+
+export const UploadScreen: React.FC<UploadScreenProps> = ({ initialSubject }) => {
     const { colors, typography, borderRadius, isDark } = useTheme();
     const insets = useSafeAreaInsets();
+
+    const [subjectInput, setSubjectInput] = useState(initialSubject && initialSubject !== 'All' ? initialSubject : '');
 
     // Progress animation states
     const [isUploading, setIsUploading] = useState(false);
@@ -27,6 +37,105 @@ export const UploadScreen: React.FC = () => {
     // Animated values
     const progressAnim = React.useRef(new Animated.Value(0)).current;
     const successScale = React.useRef(new Animated.Value(0)).current;
+
+    const handlePickAndUpload = async () => {
+        if (isUploading) return;
+
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ['application/pdf', 'image/*'],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled || !result.assets || result.assets.length === 0) {
+                return;
+            }
+
+            const pickedFile = result.assets[0];
+            setActiveFileName(pickedFile.name);
+            setIsUploading(true);
+            setIsSuccess(false);
+            setUploadPercent(0);
+            progressAnim.setValue(0);
+            successScale.setValue(0);
+
+            // Construct FormData for multipart upload
+            const formData = new FormData();
+            if (Platform.OS === 'web') {
+                formData.append('file', (pickedFile as any).file);
+            } else {
+                formData.append('file', {
+                    uri: pickedFile.uri,
+                    name: pickedFile.name,
+                    type: pickedFile.mimeType || 'application/pdf',
+                } as any);
+            }
+
+            const lowerName = pickedFile.name.toLowerCase();
+            let subject = subjectInput.trim();
+            if (!subject) {
+                subject = 'General';
+                if (lowerName.includes('physics')) subject = 'Physics';
+                else if (lowerName.includes('math') || lowerName.includes('calculus')) subject = 'Mathematics';
+                else if (lowerName.includes('chem')) subject = 'Chemistry';
+                else if (lowerName.includes('programming') || lowerName.includes('code')) subject = 'Programming';
+                else if (lowerName.includes('ai') || lowerName.includes('machine')) subject = 'AI';
+            }
+
+            formData.append('subject', subject);
+            formData.append('title', pickedFile.name.replace(/\.[^/.]+$/, ""));
+
+            await new Promise(async (resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${api.defaults.baseURL}/api/documents/upload`);
+
+                const token = await TokenManager.getAccessToken();
+                if (token) {
+                    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                }
+
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const percent = Math.round((event.loaded * 100) / event.total);
+                        setUploadPercent(percent);
+                        Animated.timing(progressAnim, {
+                            toValue: percent,
+                            duration: 100,
+                            useNativeDriver: false,
+                        }).start();
+                    }
+                };
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(xhr.responseText);
+                    } else {
+                        reject(new Error(`Server Error: ${xhr.status} ${xhr.responseText}`));
+                    }
+                };
+
+                xhr.onerror = (e) => {
+                    reject(new Error('Network error during upload'));
+                };
+
+                xhr.send(formData as any);
+            });
+
+            setIsUploading(false);
+            setIsSuccess(true);
+            Animated.spring(successScale, {
+                toValue: 1,
+                friction: 4,
+                tension: 50,
+                useNativeDriver: true,
+            }).start();
+        } catch (err: any) {
+            console.error('Upload failed:', err);
+            alert(`Failed to upload document: ${err.message || 'Verify the backend is running.'}`);
+            setIsUploading(false);
+            setIsSuccess(false);
+        }
+    };
 
     const triggerUploadMock = (providerName: string) => {
         if (isUploading) return;
@@ -91,6 +200,29 @@ export const UploadScreen: React.FC = () => {
                 <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: typography.fontSize.sm }]}>
                     Instantly convert academic references into smart study paths
                 </Text>
+            </View>
+
+            {/* Subject Text Input Mapping */}
+            <View style={{ marginBottom: 16 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', marginBottom: 8, fontSize: typography.fontSize.sm }}>
+                    Subject / Category (Optional)
+                </Text>
+                <TextInput
+                    style={{
+                        backgroundColor: colors.inputBg,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                        borderRadius: borderRadius.md,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        fontSize: typography.fontSize.sm,
+                    }}
+                    value={subjectInput}
+                    onChangeText={setSubjectInput}
+                    placeholderTextColor={colors.textMuted}
+                    placeholder="e.g. Physics, History, AI Sandbox..."
+                />
             </View>
 
             {/* Main Glass Center Drop/Choose Area */}
@@ -183,7 +315,7 @@ export const UploadScreen: React.FC = () => {
                 {STORAGE_PROVIDERS.map((provider) => (
                     <TouchableOpacity
                         key={provider.id}
-                        onPress={() => triggerUploadMock(provider.name)}
+                        onPress={() => provider.id === 'device' ? handlePickAndUpload() : triggerUploadMock(provider.name)}
                         activeOpacity={0.8}
                         style={[
                             styles.providerCard,

@@ -3,15 +3,17 @@
 
 export type AIStackParamList = {
     AIHome: undefined;
-    Chat: undefined;
-    Summary: undefined;
-    Flashcards: undefined;
-    Quiz: undefined;
+    Chat: { documentId: string };
+    Summary: { documentId: string };
+    Flashcards: { documentId: string };
+    Quiz: { documentId: string };
     QuizResult: {
+        documentId: string;
+        questions: any[];
         correct: number;
         total: number;
         timeSeconds: number;
         answers: Record<string, string | null>;
     };
-    Viva: undefined;
+    Viva: { documentId: string };
 };

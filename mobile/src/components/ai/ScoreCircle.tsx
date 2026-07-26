@@ -10,7 +10,6 @@ interface ScoreCircleProps {
     label?: string;
 }
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 // Animated circular progress ring showing the quiz score percentage.
 export const ScoreCircle: React.FC<ScoreCircleProps> = ({
@@ -38,10 +37,7 @@ export const ScoreCircle: React.FC<ScoreCircleProps> = ({
         return () => progress.removeListener(listener);
     }, [percentage, progress]);
 
-    const strokeDashoffset = progress.interpolate({
-        inputRange: [0, 100],
-        outputRange: [circumference, 0],
-    });
+    const strokeDashoffsetValue = circumference - (circumference * displayValue) / 100;
 
     const ringColor =
         percentage >= 70 ? colors.success : percentage >= 40 ? '#F59E0B' : colors.error;
@@ -59,7 +55,8 @@ export const ScoreCircle: React.FC<ScoreCircleProps> = ({
                     fill="none"
                 />
                 {/* Progress ring */}
-                <AnimatedCircle
+                {/* Progress ring */}
+                <Circle
                     cx={size / 2}
                     cy={size / 2}
                     r={radius}
@@ -68,7 +65,7 @@ export const ScoreCircle: React.FC<ScoreCircleProps> = ({
                     strokeLinecap="round"
                     fill="none"
                     strokeDasharray={circumference}
-                    strokeDashoffset={strokeDashoffset}
+                    strokeDashoffset={strokeDashoffsetValue}
                     transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 />
             </Svg>

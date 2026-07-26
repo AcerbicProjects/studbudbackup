@@ -17,7 +17,7 @@ const AppContent = () => {
     return (
         <>
             <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-            <AINavigator />
+            <AINavigator documentId="doc-123" />
         </>
     );
 };

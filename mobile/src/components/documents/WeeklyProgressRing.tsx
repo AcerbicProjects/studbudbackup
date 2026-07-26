@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated } from 'react-native';
+import { StyleSheet, View, Text, Animated, Platform } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTheme } from '../../constants/theme';
 
@@ -9,7 +9,8 @@ interface WeeklyProgressRingProps {
 }
 
 // Create an animated component wrapper for SVG Circle
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+// Note: Some react-native-web/svg versions crash with createAnimatedComponent.
+const AnimatedCircle = Platform.OS === 'web' ? Circle as any : Animated.createAnimatedComponent(Circle);
 
 export const WeeklyProgressRing: React.FC<WeeklyProgressRingProps> = ({ percentage = 72, studyHours = "14.5 hrs" }) => {
     const { colors, typography, borderRadius } = useTheme();
@@ -77,7 +78,7 @@ export const WeeklyProgressRing: React.FC<WeeklyProgressRingProps> = ({ percenta
                             strokeWidth={strokeWidth}
                             fill="transparent"
                             strokeDasharray={circumference}
-                            strokeDashoffset={animatedValue}
+                            strokeDashoffset={Platform.OS === 'web' ? strokeDashoffset : animatedValue}
                             strokeLinecap="round"
                             transform="rotate(-90 75 75)"
                         />

@@ -8,7 +8,8 @@ import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import ScoreCircle from '../../components/ai/ScoreCircle';
 import QuizCard from '../../components/ai/QuizCard';
-import { mockQuizQuestions, mockQuizFeedback } from '../../data/mockAIData';
+import api from '../../lib/api';
+import { ActivityIndicator } from 'react-native';
 
 const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60);
@@ -23,11 +24,28 @@ export const QuizResultScreen: React.FC = () => {
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
     const route = useRoute<RouteProp<AIStackParamList, 'QuizResult'>>();
 
-    const { correct, total, timeSeconds, answers } = route.params;
+    const { documentId, questions, correct, total, timeSeconds, answers } = route.params;
     const wrong = total - correct;
     const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
 
-    const [reviewOpen, setReviewOpen] = useState(false);
+    const [reviewOpen, setReviewOpen] = useState(true);
+    const [feedback, setFeedback] = useState<string | null>(null);
+    const [loadingFeedback, setLoadingFeedback] = useState(true);
+
+    React.useEffect(() => {
+        api.post('/api/ai/quiz/score', {
+            documentId,
+            quizContext: JSON.stringify(questions),
+            userAnswers: JSON.stringify(answers),
+        })
+            .then((res) => {
+                setFeedback(res.data.data.feedback);
+            })
+            .catch(() => {
+                setFeedback("Error generating feedback.");
+            })
+            .finally(() => setLoadingFeedback(false));
+    }, [documentId]);
 
     const headline =
         percentage >= 80 ? 'Excellent work! 🎉' : percentage >= 50 ? 'Good effort! 👍' : 'Keep practicing! 💪';
@@ -107,14 +125,18 @@ export const QuizResultScreen: React.FC = () => {
                         <MaterialCommunityIcons name="robot-happy-outline" size={18} color={colors.secondary} />
                         <Text style={[styles.feedbackTitle, { color: colors.secondary }]}>AI FEEDBACK</Text>
                     </View>
-                    <Text
-                        style={[
-                            styles.feedbackText,
-                            { color: colors.text, fontSize: typography.fontSize.sm + 1 },
-                        ]}
-                    >
-                        {mockQuizFeedback}
-                    </Text>
+                    {loadingFeedback ? (
+                        <ActivityIndicator style={{ marginTop: 10 }} color={colors.secondary} />
+                    ) : (
+                        <Text
+                            style={[
+                                styles.feedbackText,
+                                { color: colors.text, fontSize: typography.fontSize.sm + 1 },
+                            ]}
+                        >
+                            {feedback}
+                        </Text>
+                    )}
                 </View>
 
                 {/* Actions */}
@@ -124,7 +146,7 @@ export const QuizResultScreen: React.FC = () => {
                             styles.actionButton,
                             { backgroundColor: colors.primary, borderRadius: borderRadius.round },
                         ]}
-                        onPress={() => navigation.replace('Quiz')}
+                        onPress={() => navigation.replace('Quiz', { documentId })}
                         accessibilityRole="button"
                         accessibilityLabel="Retry quiz"
                     >
@@ -160,16 +182,25 @@ export const QuizResultScreen: React.FC = () => {
                 {/* Answer review */}
                 {reviewOpen && (
                     <View style={styles.reviewList}>
-                        {mockQuizQuestions.map((q) => (
-                            <View key={q.id} style={styles.reviewItem}>
-                                <QuizCard
-                                    question={q}
-                                    selectedAnswer={answers[q.id] ?? null}
-                                    onSelectAnswer={() => {}}
-                                    showResult
-                                />
-                            </View>
-                        ))}
+                        {questions.map((q: any) => {
+                            const isCorrect = answers[q.id] === q.correctAnswer;
+                            return (
+                                <View key={q.id} style={styles.reviewItem}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginBottom: 8 }}>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: colors.textMuted }}>Question #{q.id || '?'}</Text>
+                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: isCorrect ? colors.success : colors.error }}>
+                                            Marks Obtained: {isCorrect ? '1 / 1' : '0 / 1'}
+                                        </Text>
+                                    </View>
+                                    <QuizCard
+                                        question={q}
+                                        selectedAnswer={answers[q.id] ?? null}
+                                        onSelectAnswer={() => { }}
+                                        showResult
+                                    />
+                                </View>
+                            );
+                        })}
                     </View>
                 )}
             </ScrollView>

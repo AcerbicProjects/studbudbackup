@@ -100,28 +100,28 @@ export const Logo: React.FC<LogoProps> = ({ size = 'small', animated = true }) =
         {/* Central pulsing core badge */}
         <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
           <View style={[styles.iconContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons 
-              name="school-outline" 
-              size={iconSize} 
-              color="#4F46E5" 
+            <MaterialCommunityIcons
+              name="school-outline"
+              size={iconSize}
+              color="#4F46E5"
             />
             <View style={styles.sparklePosition}>
-              <MaterialCommunityIcons 
-                name={"sparkles" as any} 
-                size={iconSize * 0.4} 
-                color="#8B5CF6" 
+              <MaterialCommunityIcons
+                name="star-four-points"
+                size={iconSize * 0.4}
+                color="#8B5CF6"
               />
             </View>
           </View>
         </Animated.View>
       </View>
-      
+
       <Text style={[
-        styles.title, 
-        { 
-          color: colors.text, 
+        styles.title,
+        {
+          color: colors.text,
           fontSize: isLarge ? typography.fontSize.h1 : typography.fontSize.xl,
-          marginTop: isLarge ? spacing.md : spacing.sm 
+          marginTop: isLarge ? spacing.md : spacing.sm
         }
       ]}>
         Study<Text style={{ color: '#8B5CF6' }}>Buddy</Text>

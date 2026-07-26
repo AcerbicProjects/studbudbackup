@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,12 +8,8 @@ import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import SummaryCard from '../../components/ai/SummaryCard';
 import FormulaCard from '../../components/ai/FormulaCard';
-import {
-    mockSummaryMeta,
-    mockSummaryOverview,
-    mockSummarySections,
-    mockFormulas,
-} from '../../data/mockAIData';
+import api from '../../lib/api';
+import { ActivityIndicator, Alert } from 'react-native';
 
 // Smart Summary — structured revision view of the uploaded document.
 // Week 1: static mock content. Copy/share actions become functional in Week 2.
@@ -21,6 +17,44 @@ export const SummaryScreen: React.FC = () => {
     const { colors, borderRadius, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const route = useRoute<RouteProp<AIStackParamList, 'Summary'>>();
+    const documentId = route.params?.documentId;
+
+    const [loading, setLoading] = useState(true);
+    const [summary, setSummary] = useState<any>(null);
+
+    React.useEffect(() => {
+        if (!documentId) return;
+        setLoading(true);
+        api.post('/api/ai/summary', { documentId })
+            .then((res) => {
+                const data = res.data.data;
+                const mappedFormulas = data.formulaCards?.map((f: any, i: number) => ({
+                    id: `f${i}`,
+                    name: f.name,
+                    equation: f.formula,
+                    explanation: f.explanation || '',
+                })) || [];
+                const mappedPageSummaries = data.pageSummaries?.map((p: any, i: number) => ({
+                    id: `p${i}`,
+                    title: p.pageNumber ? `Page ${p.pageNumber}: ${p.title}` : p.title,
+                    icon: 'book-open-page-variant-outline',
+                    points: p.points || [],
+                })) || [];
+
+                setSummary({
+                    title: data.title,
+                    overview: data.overview,
+                    sections: mappedPageSummaries,
+                    formulas: mappedFormulas,
+                });
+            })
+            .catch((err) => {
+                const msg = err.response?.data?.message || 'Failed to generate Summary.';
+                Alert.alert('AI Error', msg);
+            })
+            .finally(() => setLoading(false));
+    }, [documentId]);
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -69,10 +103,10 @@ export const SummaryScreen: React.FC = () => {
                             style={[styles.metaTitle, { color: colors.text, fontSize: typography.fontSize.md }]}
                             numberOfLines={1}
                         >
-                            {mockSummaryMeta.documentTitle}
+                            {summary?.title || 'Document'}
                         </Text>
                         <Text style={[styles.metaSub, { color: colors.textMuted }]}>
-                            {mockSummaryMeta.subject} • {mockSummaryMeta.readTime}
+                            StudyBuddy AI Summary
                         </Text>
                     </View>
                     <View style={[styles.aiBadge, { backgroundColor: `${colors.secondary}1F` }]}>
@@ -81,45 +115,62 @@ export const SummaryScreen: React.FC = () => {
                     </View>
                 </View>
 
-                {/* Overview */}
-                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>OVERVIEW</Text>
-                <View
-                    style={[
-                        styles.overviewCard,
-                        {
-                            backgroundColor: colors.card,
-                            borderColor: colors.border,
-                            borderRadius: borderRadius.lg,
-                        },
-                    ]}
-                >
-                    <Text
-                        style={[
-                            styles.overviewText,
-                            { color: colors.text, fontSize: typography.fontSize.sm + 1 },
-                        ]}
-                    >
-                        {mockSummaryOverview}
-                    </Text>
-                </View>
+                {loading ? (
+                    <View style={{ flex: 1, alignItems: 'center', marginTop: 40 }}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={{ color: colors.textMuted, marginTop: 16 }}>Synthesizing knowledge...</Text>
+                    </View>
+                ) : !summary ? (
+                    <View style={{ flex: 1, alignItems: 'center', marginTop: 40 }}>
+                        <Text style={{ color: colors.textMuted }}>No summary could be generated.</Text>
+                    </View>
+                ) : (
+                    <>
+                        {/* Overview */}
+                        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>OVERVIEW</Text>
+                        <View
+                            style={[
+                                styles.overviewCard,
+                                {
+                                    backgroundColor: colors.card,
+                                    borderColor: colors.border,
+                                    borderRadius: borderRadius.lg,
+                                },
+                            ]}
+                        >
+                            <Text
+                                style={[
+                                    styles.overviewText,
+                                    { color: colors.text, fontSize: typography.fontSize.sm + 1 },
+                                ]}
+                            >
+                                {summary.overview}
+                            </Text>
+                        </View>
 
-                {/* Formula rail */}
-                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>FORMULA CARDS</Text>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.formulaRail}
-                >
-                    {mockFormulas.map((formula) => (
-                        <FormulaCard key={formula.id} formula={formula} />
-                    ))}
-                </ScrollView>
+                        {/* Formula rail */}
+                        {summary.formulas && summary.formulas.length > 0 && (
+                            <>
+                                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>FORMULA CARDS</Text>
+                                <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.formulaRail}
+                                >
+                                    {summary.formulas.map((formula: any) => (
+                                        <FormulaCard key={formula.id} formula={formula} />
+                                    ))}
+                                </ScrollView>
+                            </>
+                        )}
 
-                {/* Expandable sections */}
-                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>BREAKDOWN</Text>
-                {mockSummarySections.map((section, index) => (
-                    <SummaryCard key={section.id} section={section} initiallyExpanded={index === 0} />
-                ))}
+                        {/* Expandable sections */}
+                        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>BREAKDOWN</Text>
+                        {summary.sections.map((section: any, index: number) => (
+                            <SummaryCard key={section.id} section={section} initiallyExpanded={index === 0} />
+                        ))}
+                    </>
+                )}
             </ScrollView>
         </View>
     );

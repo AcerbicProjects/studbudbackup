@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, Modal, Platform } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import api, { getBaseUrl } from '../../lib/api';
+import { WebView } from 'react-native-webview';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AINavigator } from '../../navigation/AINavigator';
-
 import { documents as mockDocs } from '../../data/documents';
 
 const { width } = Dimensions.get('window');
@@ -18,16 +20,117 @@ interface DocumentDetailScreenProps {
 export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ documentId, onBackPress }) => {
     const { colors, typography, borderRadius, isDark } = useTheme();
     const insets = useSafeAreaInsets();
+    const navigation = useNavigation<any>();
 
-    // Find document from mock records
-    const document = mockDocs.find((doc) => doc.id === documentId) || mockDocs[0]!;
+    // Fetch the real document state gracefully instead of strictly mocking
+    const [document, setDocument] = useState<any>(mockDocs.find((doc) => doc.id === documentId) || mockDocs[0]!);
+
+    React.useEffect(() => {
+        const fetchDoc = async () => {
+            try {
+                const response = await api.get(`/api/documents/${documentId}`);
+                if (response.data) {
+                    setDocument(response.data);
+                }
+            } catch (err) {
+                console.warn('Failed to load document:', err);
+            }
+        };
+        fetchDoc();
+    }, [documentId]);
+
+    const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
+
+    const handleViewDocument = () => {
+        // Try storedFilename first, then fall back to any url field from the document
+        const filename = document.storedFilename || document.fileUrl || document.url;
+        if (!filename) {
+            alert("This document doesn't have a viewable file yet.");
+            return;
+        }
+        // Build the full URL if it's a relative path
+        let fullUrl = filename.startsWith('http') ? filename : `${getBaseUrl()}/${(filename as string).replace(/\\/g, '/')}`;
+        // On Android emulator, remap localhost
+        if (Platform.OS === 'android') {
+            fullUrl = fullUrl.replace('localhost', '10.0.2.2').replace('127.0.0.1', '10.0.2.2');
+        }
+        console.log('[DocViewer] Opening URL:', fullUrl);
+        setPdfViewerUrl(fullUrl);
+    };
+
+    const handleDelete = async () => {
+        try {
+            await api.delete(`/api/documents/${document._id || document.id}`);
+            onBackPress(); // Route back
+        } catch (err) {
+            console.error('Delete failed', err);
+            alert('Failed to delete document.');
+        }
+    };
 
     // When true, the AI tools hub replaces the document detail view
     const [showAITools, setShowAITools] = useState(false);
 
     // --- AI Accelerator Tools hub view ---
     if (showAITools) {
-        return <AINavigator onBack={() => setShowAITools(false)} />;
+        return <AINavigator onBack={() => setShowAITools(false)} documentId={documentId} />;
+    }
+
+    // --- PDF Viewer (fullscreen early return) ---
+    if (pdfViewerUrl) {
+        const pdfJsUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfViewerUrl)}`;
+
+        const header = (
+            <View style={[styles.headerRow, { paddingTop: Math.max(insets.top, 16) }]}>
+                <TouchableOpacity
+                    onPress={() => setPdfViewerUrl(null)}
+                    style={[styles.backBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                    <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.headingTitle, { color: colors.text, fontSize: typography.fontSize.md }]}>Document Viewer</Text>
+                <View style={styles.backBtn} />
+            </View>
+        );
+
+        if (Platform.OS === 'web') {
+            // On web: use the browser's built-in PDF renderer via a direct iframe.
+            // Remote pdf.js (mozilla.github.io) is blocked by CORS for localhost URLs.
+            return (
+                <View style={{ flex: 1, backgroundColor: colors.background }}>
+                    {header}
+                    {/* @ts-ignore – using HTML elements inside RN Web */}
+                    <div style={{ width: '100%', height: 'calc(100vh - 72px)' }}>
+                        {/* @ts-ignore */}
+                        <iframe
+                            src={pdfViewerUrl}
+                            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                            title="PDF Viewer"
+                        />
+                    </div>
+                </View>
+            );
+        }
+
+        return (
+            <View style={{ flex: 1, backgroundColor: colors.background }}>
+                {header}
+                <WebView
+                    // For native WebView, use pdf.js to render (no CORS restriction in native)
+                    source={{ uri: pdfJsUrl }}
+                    style={{ flex: 1 }}
+                    mixedContentMode="always"
+                    allowFileAccess
+                    startInLoadingState
+                    renderLoading={() => (
+                        <View style={{ ...(StyleSheet.absoluteFill as any), justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+                            <MaterialCommunityIcons name="file-pdf-box" size={48} color="#8B5CF6" />
+                            <Text style={{ color: colors.text, marginTop: 12, fontWeight: '600' }}>Loading PDF...</Text>
+                        </View>
+                    )}
+                />
+            </View>
+        );
     }
 
     // --- Normal document detail view ---
@@ -48,9 +151,10 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                 </Text>
 
                 <TouchableOpacity
-                    style={[styles.backBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={handleDelete}
+                    style={[styles.backBtn, { backgroundColor: colors.card, borderColor: 'rgba(239, 68, 68, 0.4)' }]}
                 >
-                    <MaterialCommunityIcons name="bookmark-outline" size={20} color={colors.text} />
+                    <MaterialCommunityIcons name="trash-can-outline" size={20} color="#EF4444" />
                 </TouchableOpacity>
             </View>
 
@@ -59,19 +163,24 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                 showsVerticalScrollIndicator={false}
             >
                 {/* PDF Document Preview Area representation */}
-                <View style={[styles.pdfMockPreview, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}>
+                {/* Real document Viewer Link Action */}
+                <TouchableOpacity
+                    onPress={handleViewDocument}
+                    activeOpacity={0.85}
+                    style={[styles.pdfMockPreview, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}
+                >
                     <LinearGradient
                         colors={['transparent', 'rgba(0,0,0,0.03)']}
                         style={StyleSheet.absoluteFill}
                     />
                     <MaterialCommunityIcons name="file-pdf-box" size={72} color="#8B5CF6" />
                     <Text style={[styles.pdfFileName, { color: colors.text, fontSize: typography.fontSize.sm }]}>
-                        {document.title}
+                        Tap to View Original Document
                     </Text>
                     <Text style={[styles.pdfFileSize, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
-                        {document.pages} Pages • Mock PDF Preview Mode
+                        {document.fileSize ? (document.fileSize / 1024 / 1024).toFixed(2) + ' MB • ' : ''}Original Resource
                     </Text>
-                </View>
+                </TouchableOpacity>
 
                 {/* Informational description panel */}
                 <View style={styles.metaPanel}>
@@ -165,6 +274,8 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                 </TouchableOpacity>
 
             </ScrollView>
+
+
 
         </View>
     );

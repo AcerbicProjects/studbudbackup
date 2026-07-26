@@ -9,12 +9,13 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
+import api from '../../lib/api';
 import ChatBubble from '../../components/ai/ChatBubble';
 import MessageInput from '../../components/ai/MessageInput';
 import TypingIndicator from '../../components/ai/TypingIndicator';
@@ -33,17 +34,24 @@ export const ChatScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
 
-    const [messages, setMessages] = useState<ChatMessage[]>(mockChatMessages);
+    const route = useRoute<RouteProp<AIStackParamList, 'Chat'>>();
+    const { documentId } = route.params;
+
+    const [messages, setMessages] = useState<ChatMessage[]>([{
+        id: 'init-msg',
+        role: 'ai',
+        text: "Hi! I am your StudyBuddy AI. I've read your document. What would you like to know?",
+        timestamp: new Date().toISOString()
+    }]);
     const [isTyping, setIsTyping] = useState(false);
     const listRef = useRef<FlatList<ChatMessage>>(null);
-    const responseIndex = useRef(0);
 
     const scrollToEnd = () => {
         // Give the list a beat to render the new row first
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
     };
 
-    const handleSend = (text: string) => {
+    const handleSend = async (text: string) => {
         const userMessage: ChatMessage = {
             id: `u-${Date.now()}`,
             role: 'user',
@@ -54,34 +62,67 @@ export const ChatScreen: React.FC = () => {
         setIsTyping(true);
         scrollToEnd();
 
-        // Mock AI reply (Week 1) — cycles through canned responses
-        setTimeout(() => {
+        try {
+            const response = await api.post('/api/ai/chat', {
+                documentId,
+                message: text
+            });
+
             const reply: ChatMessage = {
                 id: `a-${Date.now()}`,
                 role: 'ai',
-                text: mockCannedResponses[responseIndex.current % mockCannedResponses.length],
+                text: response.data.reply,
                 timestamp: new Date().toISOString(),
             };
-            responseIndex.current += 1;
-            setIsTyping(false);
             setMessages((prev) => [...prev, reply]);
+        } catch (error: any) {
+            console.error('Chat error:', error);
+            const errReply: ChatMessage = {
+                id: `a-err-${Date.now()}`,
+                role: 'ai',
+                text: error.response?.data?.message || 'Sorry, I encountered an error answering that.',
+                timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, errReply]);
+        } finally {
+            setIsTyping(false);
             scrollToEnd();
-        }, 1600);
+        }
     };
 
-    const handleRegenerate = (messageId: string) => {
-        setMessages((prev) => {
-            const target = prev.find((m) => m.id === messageId);
-            if (!target || target.role !== 'ai') return prev;
-            return prev.map((m) =>
-                m.id === messageId
-                    ? {
-                          ...m,
-                          text: mockCannedResponses[(responseIndex.current++) % mockCannedResponses.length],
-                      }
-                    : m
-            );
-        });
+    const handleRegenerate = async (messageId: string) => {
+        // Find the index of the message to regenerate
+        const idx = messages.findIndex(m => m.id === messageId);
+        if (idx <= 0 || messages[idx].role !== 'ai') return;
+
+        // Use the previous user message as the query
+        const prevUserMsg = messages[idx - 1];
+        if (prevUserMsg?.role !== 'user') return;
+
+        // Pluck out the regenerating message
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+        setIsTyping(true);
+        scrollToEnd();
+
+        try {
+            const response = await api.post('/api/ai/chat', {
+                documentId,
+                message: prevUserMsg.text + " (Please provide a different or more detailed answer)"
+            });
+
+            const reply: ChatMessage = {
+                id: `a-${Date.now()}`,
+                role: 'ai',
+                text: response.data.reply,
+                timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, reply]);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsTyping(false);
+            scrollToEnd();
+        }
     };
 
     return (

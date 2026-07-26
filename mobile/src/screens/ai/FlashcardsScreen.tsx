@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import Flashcard from '../../components/ai/Flashcard';
-import { FlashcardData, mockFlashcards } from '../../data/mockAIData';
+import { FlashcardData } from '../../data/mockAIData';
+import api from '../../lib/api';
+import { ActivityIndicator, Alert } from 'react-native';
 
 // Flashcards — active recall deck with flip, bookmark, shuffle and progress.
 // Week 1: previous/next buttons; swipe gestures land in Week 2.
@@ -15,12 +17,38 @@ export const FlashcardsScreen: React.FC = () => {
     const { colors, borderRadius, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const route = useRoute<RouteProp<AIStackParamList, 'Flashcards'>>();
+    const documentId = route.params?.documentId;
 
-    const [cards, setCards] = useState<FlashcardData[]>(mockFlashcards);
+    const [cards, setCards] = useState<FlashcardData[]>([]);
     const [index, setIndex] = useState(0);
+    const [loading, setLoading] = useState(true);
+
+    React.useEffect(() => {
+        if (!documentId) return;
+        setLoading(true);
+        api.post('/api/ai/flashcards', { documentId, count: 10 })
+            .then((res) => {
+                const aiCards = res.data.data.flashcards.map((c: any, i: number) => ({
+                    id: String(i),
+                    front: c.front,
+                    back: c.back,
+                    difficulty: c.difficulty || 'medium',
+                    bookmarked: false,
+                }));
+                setCards(aiCards);
+            })
+            .catch((err) => {
+                const msg = err.response?.data?.message || 'Failed to generate flashcards.';
+                Alert.alert('AI Error', msg);
+            })
+            .finally(() => {
+                setLoading(false);
+            });
+    }, [documentId]);
 
     const card = cards[index];
-    const progress = ((index + 1) / cards.length) * 100;
+    const progress = cards.length > 0 ? ((index + 1) / cards.length) * 100 : 0;
 
     const handleBookmarkToggle = (id: string) => {
         setCards((prev) =>
@@ -83,51 +111,64 @@ export const FlashcardsScreen: React.FC = () => {
                 </Text>
             </View>
 
-            {/* Card */}
-            <View style={styles.cardArea}>
-                <Flashcard card={card} onBookmarkToggle={handleBookmarkToggle} />
-            </View>
+            {/* Card Area */}
+            {loading ? (
+                <View style={[styles.cardArea, { alignItems: 'center' }]}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={{ color: colors.textMuted, marginTop: 16 }}>AI is extracting flashcards...</Text>
+                </View>
+            ) : cards.length === 0 ? (
+                <View style={[styles.cardArea, { alignItems: 'center' }]}>
+                    <Text style={{ color: colors.textMuted }}>No flashcards could be generated.</Text>
+                </View>
+            ) : (
+                <>
+                    <View style={styles.cardArea}>
+                        <Flashcard card={card} onBookmarkToggle={handleBookmarkToggle} />
+                    </View>
 
-            {/* Deck controls */}
-            <View style={[styles.controls, { paddingBottom: insets.bottom + 24 }]}>
-                <TouchableOpacity
-                    style={[
-                        styles.navButton,
-                        {
-                            backgroundColor: colors.card,
-                            borderColor: colors.border,
-                            borderRadius: borderRadius.round,
-                            opacity: index === 0 ? 0.4 : 1,
-                        },
-                    ]}
-                    onPress={goPrev}
-                    disabled={index === 0}
-                    accessibilityRole="button"
-                    accessibilityLabel="Previous card"
-                >
-                    <MaterialCommunityIcons name="arrow-left" size={22} color={colors.text} />
-                    <Text style={[styles.navLabel, { color: colors.text }]}>Previous</Text>
-                </TouchableOpacity>
+                    {/* Deck controls */}
+                    <View style={[styles.controls, { paddingBottom: insets.bottom + 24 }]}>
+                        <TouchableOpacity
+                            style={[
+                                styles.navButton,
+                                {
+                                    backgroundColor: colors.card,
+                                    borderColor: colors.border,
+                                    borderRadius: borderRadius.round,
+                                    opacity: index === 0 ? 0.4 : 1,
+                                },
+                            ]}
+                            onPress={goPrev}
+                            disabled={index === 0}
+                            accessibilityRole="button"
+                            accessibilityLabel="Previous card"
+                        >
+                            <MaterialCommunityIcons name="arrow-left" size={22} color={colors.text} />
+                            <Text style={[styles.navLabel, { color: colors.text }]}>Previous</Text>
+                        </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[
-                        styles.navButton,
-                        styles.navButtonPrimary,
-                        {
-                            backgroundColor: colors.primary,
-                            borderRadius: borderRadius.round,
-                            opacity: index === cards.length - 1 ? 0.4 : 1,
-                        },
-                    ]}
-                    onPress={goNext}
-                    disabled={index === cards.length - 1}
-                    accessibilityRole="button"
-                    accessibilityLabel="Next card"
-                >
-                    <Text style={[styles.navLabel, styles.navLabelPrimary]}>Next</Text>
-                    <MaterialCommunityIcons name="arrow-right" size={22} color="#FFF" />
-                </TouchableOpacity>
-            </View>
+                        <TouchableOpacity
+                            style={[
+                                styles.navButton,
+                                styles.navButtonPrimary,
+                                {
+                                    backgroundColor: colors.primary,
+                                    borderRadius: borderRadius.round,
+                                    opacity: index === cards.length - 1 ? 0.4 : 1,
+                                },
+                            ]}
+                            onPress={goNext}
+                            disabled={index === cards.length - 1}
+                            accessibilityRole="button"
+                            accessibilityLabel="Next card"
+                        >
+                            <Text style={[styles.navLabel, styles.navLabelPrimary]}>Next</Text>
+                            <MaterialCommunityIcons name="arrow-right" size={22} color="#FFF" />
+                        </TouchableOpacity>
+                    </View>
+                </>
+            )}
         </View>
     );
 };

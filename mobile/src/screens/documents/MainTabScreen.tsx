@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useAuth } from '../../context/AuthContext';
 
 import HomeScreen from './HomeScreen';
 import DocumentsScreen from './DocumentsScreen';
@@ -12,6 +11,7 @@ import UploadScreen from './UploadScreen';
 import BottomNavBar from '../../components/documents/BottomNavBar';
 import FloatingUploadButton from '../../components/documents/FloatingUploadButton';
 import DocumentDetailScreen from './DocumentDetailScreen';
+import SettingsScreen from '../SettingsScreen';
 import ProfileTab from './ProfileTab';
 
 import DashboardScreen from '../dashboard/DashboardScreen';
@@ -23,11 +23,11 @@ import NotificationsScreen from '../dashboard/NotificationsScreen';
 export const MainTabScreen: React.FC = () => {
     const { colors, typography, borderRadius } = useTheme();
     const insets = useSafeAreaInsets();
-    const { user, logout } = useAuth();
 
     const [activeTab, setActiveTab] = useState('Home');
     const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
     const [activeSubScreen, setActiveSubScreen] = useState<string | null>(null);
+    const [globalSubject, setGlobalSubject] = useState('All');
 
     // Navigations helper inside tabs
     const handleSelectDocument = (docId: string) => {
@@ -79,6 +79,8 @@ export const MainTabScreen: React.FC = () => {
                     <HomeScreen
                         onNavigateToTab={setActiveTab}
                         onSelectDocument={handleSelectDocument}
+                        globalSubject={globalSubject}
+                        setGlobalSubject={setGlobalSubject}
                     />
                 );
             case 'Documents':
@@ -90,7 +92,7 @@ export const MainTabScreen: React.FC = () => {
             case 'Scan':
                 return <ScannerScreen />;
             case 'Upload':
-                return <UploadScreen />;
+                return <UploadScreen initialSubject={globalSubject} />;
             case 'Progress':
                 return (
                     <DashboardScreen
@@ -104,8 +106,10 @@ export const MainTabScreen: React.FC = () => {
                 );
             case 'Profile':
                 return <ProfileTab />;
+            case 'Settings':
+                return <SettingsScreen />;
             default:
-                return <HomeScreen onNavigateToTab={setActiveTab} onSelectDocument={handleSelectDocument} />;
+                return <HomeScreen onNavigateToTab={setActiveTab} onSelectDocument={handleSelectDocument} globalSubject={globalSubject} setGlobalSubject={setGlobalSubject} />;
         }
     };
 
@@ -131,8 +135,15 @@ export const MainTabScreen: React.FC = () => {
     );
 
 
+
     return (
         <View style={styles.mainContainer}>
+            {/* Header with Settings button */}
+            <View style={styles.headerContainer}>
+                <TouchableOpacity onPress={() => setActiveTab('Settings')} accessibilityLabel="Open Settings">
+                    <MaterialCommunityIcons name="cog" size={24} color={colors.text} />
+                </TouchableOpacity>
+            </View>
             {/* Current Screen body */}
             {renderCurrentView()}
 
@@ -152,6 +163,13 @@ export const MainTabScreen: React.FC = () => {
 const styles = StyleSheet.create({
     mainContainer: {
         flex: 1,
+    },
+    headerContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        paddingHorizontal: 16,
+        paddingTop: 12,
     },
     mockBg: {
         flex: 1,
@@ -198,24 +216,6 @@ const styles = StyleSheet.create({
         color: '#FFF',
         fontSize: 18,
         fontWeight: '800',
-    },
-    logoutButton: {
-        marginTop: 24,
-        width: '100%',
-        height: 48,
-        borderRadius: 8,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    logoutButtonText: {
-        color: '#FFFFFF',
-        fontWeight: 'bold',
-        fontSize: 15,
-    },
-    profileAvatarImage: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
     },
 });
 

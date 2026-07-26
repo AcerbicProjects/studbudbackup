@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager, ActivityIndicator, Alert } from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import DifficultyChip from '../../components/ai/DifficultyChip';
-import { VivaQuestion, mockVivaQuestions } from '../../data/mockAIData';
+import api from '../../lib/api';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -21,17 +21,39 @@ const CONFIDENCE_OPTIONS: { key: Confidence; label: string; icon: string; color:
     { key: 'high', label: 'Nailed it', icon: 'emoticon-excited-outline', color: '#22C55E' },
 ];
 
-// Viva Preparation — oral exam practice. Read the question aloud, answer it
-// yourself, reveal the model answer, then rate your confidence.
 export const VivaScreen: React.FC = () => {
     const { colors, borderRadius, typography, shadows } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const route = useRoute<RouteProp<AIStackParamList, 'Viva'>>();
+    const documentId = route.params?.documentId;
 
-    const [questions, setQuestions] = useState<VivaQuestion[]>(mockVivaQuestions);
+    const [questions, setQuestions] = useState<any[]>([]);
     const [index, setIndex] = useState(0);
     const [revealed, setRevealed] = useState(false);
     const [confidence, setConfidence] = useState<Record<string, Confidence>>({});
+    const [loading, setLoading] = useState(true);
+
+    React.useEffect(() => {
+        if (!documentId) return;
+        setLoading(true);
+        api.post('/api/ai/viva', { documentId, count: 5 })
+            .then((res) => {
+                const aiQs = res.data.data.questions.map((q: any, i: number) => ({
+                    id: `v${i}`,
+                    question: q.question,
+                    answer: q.expectedAnswer,
+                    difficulty: 'medium',
+                    bookmarked: false,
+                }));
+                setQuestions(aiQs);
+            })
+            .catch((err) => {
+                const msg = err.response?.data?.message || 'Failed to generate Viva.';
+                Alert.alert('AI Error', msg);
+            })
+            .finally(() => setLoading(false));
+    }, [documentId]);
 
     const question = questions[index];
     const isLast = index === questions.length - 1;
@@ -69,184 +91,197 @@ export const VivaScreen: React.FC = () => {
                 <Text style={[styles.headerTitle, { color: colors.text, fontSize: typography.fontSize.md }]}>
                     Viva Preparation
                 </Text>
-                <TouchableOpacity
-                    onPress={handleBookmarkToggle}
-                    style={styles.headerButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="Bookmark question"
-                >
-                    <MaterialCommunityIcons
-                        name={question.bookmarked ? 'bookmark' : 'bookmark-outline'}
-                        size={22}
-                        color={question.bookmarked ? colors.secondary : colors.textMuted}
-                    />
-                </TouchableOpacity>
+                {question && (
+                    <TouchableOpacity
+                        onPress={handleBookmarkToggle}
+                        style={styles.headerButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Bookmark question"
+                    >
+                        <MaterialCommunityIcons
+                            name={question.bookmarked ? 'bookmark' : 'bookmark-outline'}
+                            size={22}
+                            color={question.bookmarked ? colors.secondary : colors.textMuted}
+                        />
+                    </TouchableOpacity>
+                )}
             </View>
 
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
-            >
-                {/* Progress pills */}
-                <View style={styles.pillsRow}>
-                    {questions.map((q, i) => (
-                        <View
-                            key={q.id}
-                            style={[
-                                styles.pill,
-                                {
-                                    backgroundColor:
-                                        i < index
-                                            ? colors.accent
-                                            : i === index
-                                            ? colors.primary
-                                            : colors.border,
-                                },
-                            ]}
-                        />
-                    ))}
+            {loading ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={{ color: colors.textMuted, marginTop: 16 }}>Preparing your examiner...</Text>
                 </View>
-                <Text style={[styles.counter, { color: colors.textMuted }]}>
-                    Question {index + 1} of {questions.length}
-                </Text>
-
-                {/* Question card */}
-                <View
-                    style={[
-                        styles.questionCard,
-                        shadows,
-                        {
-                            backgroundColor: colors.card,
-                            borderColor: colors.border,
-                            borderRadius: borderRadius.xl,
-                        },
-                    ]}
+            ) : questions.length === 0 ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: colors.textMuted }}>No viva questions generated.</Text>
+                </View>
+            ) : (
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
                 >
-                    <View style={styles.questionHeader}>
-                        <View style={[styles.examinerIcon, { backgroundColor: `${colors.primary}1A` }]}>
-                            <MaterialCommunityIcons name="account-tie" size={20} color={colors.primary} />
-                        </View>
-                        <Text style={[styles.examinerLabel, { color: colors.textMuted }]}>EXAMINER ASKS</Text>
-                        <DifficultyChip difficulty={question.difficulty} size="sm" />
+                    {/* Progress pills */}
+                    <View style={styles.pillsRow}>
+                        {questions.map((q, i) => (
+                            <View
+                                key={q.id}
+                                style={[
+                                    styles.pill,
+                                    {
+                                        backgroundColor:
+                                            i < index
+                                                ? colors.accent
+                                                : i === index
+                                                    ? colors.primary
+                                                    : colors.border,
+                                    },
+                                ]}
+                            />
+                        ))}
                     </View>
-
-                    <Text style={[styles.questionText, { color: colors.text, fontSize: typography.fontSize.lg }]}>
-                        {question.question}
+                    <Text style={[styles.counter, { color: colors.textMuted }]}>
+                        Question {index + 1} of {questions.length}
                     </Text>
 
-                    {/* Model answer */}
-                    {revealed ? (
-                        <View
-                            style={[
-                                styles.answerBox,
-                                { backgroundColor: colors.inputBg, borderRadius: borderRadius.md },
-                            ]}
-                        >
-                            <View style={styles.answerHeader}>
-                                <MaterialCommunityIcons name="check-decagram-outline" size={16} color={colors.accent} />
-                                <Text style={[styles.answerLabel, { color: colors.accent }]}>MODEL ANSWER</Text>
-                            </View>
-                            <Text
-                                style={[
-                                    styles.answerText,
-                                    { color: colors.text, fontSize: typography.fontSize.sm + 1 },
-                                ]}
-                            >
-                                {question.answer}
-                            </Text>
-                        </View>
-                    ) : (
-                        <TouchableOpacity
-                            style={[
-                                styles.revealButton,
-                                { borderColor: colors.primary, borderRadius: borderRadius.round },
-                            ]}
-                            onPress={handleReveal}
-                            accessibilityRole="button"
-                            accessibilityLabel="Reveal answer"
-                        >
-                            <MaterialCommunityIcons name="eye-outline" size={18} color={colors.primary} />
-                            <Text style={[styles.revealText, { color: colors.primary }]}>
-                                Reveal Answer
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Confidence rating — appears after reveal */}
-                {revealed && (
-                    <View style={styles.confidenceSection}>
-                        <Text style={[styles.confidenceTitle, { color: colors.textMuted }]}>
-                            HOW DID YOU DO?
-                        </Text>
-                        <View style={styles.confidenceRow}>
-                            {CONFIDENCE_OPTIONS.map((option) => {
-                                const selected = confidence[question.id] === option.key;
-                                return (
-                                    <TouchableOpacity
-                                        key={option.key}
-                                        style={[
-                                            styles.confidenceButton,
-                                            {
-                                                backgroundColor: selected ? `${option.color}1F` : colors.card,
-                                                borderColor: selected ? option.color : colors.border,
-                                                borderRadius: borderRadius.lg,
-                                            },
-                                        ]}
-                                        onPress={() =>
-                                            setConfidence((prev) => ({ ...prev, [question.id]: option.key }))
-                                        }
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`Confidence: ${option.label}`}
-                                    >
-                                        <MaterialCommunityIcons
-                                            name={option.icon as any}
-                                            size={26}
-                                            color={selected ? option.color : colors.textMuted}
-                                        />
-                                        <Text
-                                            style={[
-                                                styles.confidenceLabel,
-                                                { color: selected ? option.color : colors.textMuted },
-                                            ]}
-                                        >
-                                            {option.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </View>
-                    </View>
-                )}
-
-                {/* Next question */}
-                <TouchableOpacity
-                    style={[
-                        styles.nextButton,
-                        {
-                            backgroundColor: isLast ? colors.card : colors.primary,
-                            borderColor: colors.border,
-                            borderWidth: isLast ? 1 : 0,
-                            borderRadius: borderRadius.round,
-                            opacity: isLast && !revealed ? 0.5 : 1,
-                        },
-                    ]}
-                    onPress={handleNext}
-                    disabled={isLast}
-                    accessibilityRole="button"
-                    accessibilityLabel={isLast ? 'Last question' : 'Next question'}
-                >
-                    <Text
+                    {/* Question card */}
+                    <View
                         style={[
-                            styles.nextButtonText,
-                            { color: isLast ? colors.textMuted : '#FFFFFF' },
+                            styles.questionCard,
+                            shadows,
+                            {
+                                backgroundColor: colors.card,
+                                borderColor: colors.border,
+                                borderRadius: borderRadius.xl,
+                            },
                         ]}
                     >
-                        {isLast ? 'End of session — great work!' : 'Next Question'}
-                    </Text>
-                    {!isLast && <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />}
-                </TouchableOpacity>
-            </ScrollView>
+                        <View style={styles.questionHeader}>
+                            <View style={[styles.examinerIcon, { backgroundColor: `${colors.primary}1A` }]}>
+                                <MaterialCommunityIcons name="account-tie" size={20} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.examinerLabel, { color: colors.textMuted }]}>EXAMINER ASKS</Text>
+                            <DifficultyChip difficulty={question.difficulty} size="sm" />
+                        </View>
+
+                        <Text style={[styles.questionText, { color: colors.text, fontSize: typography.fontSize.lg }]}>
+                            {question.question}
+                        </Text>
+
+                        {/* Model answer */}
+                        {revealed ? (
+                            <View
+                                style={[
+                                    styles.answerBox,
+                                    { backgroundColor: colors.inputBg, borderRadius: borderRadius.md },
+                                ]}
+                            >
+                                <View style={styles.answerHeader}>
+                                    <MaterialCommunityIcons name="check-decagram-outline" size={16} color={colors.accent} />
+                                    <Text style={[styles.answerLabel, { color: colors.accent }]}>MODEL ANSWER</Text>
+                                </View>
+                                <Text
+                                    style={[
+                                        styles.answerText,
+                                        { color: colors.text, fontSize: typography.fontSize.sm + 1 },
+                                    ]}
+                                >
+                                    {question.answer}
+                                </Text>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                style={[
+                                    styles.revealButton,
+                                    { borderColor: colors.primary, borderRadius: borderRadius.round },
+                                ]}
+                                onPress={handleReveal}
+                                accessibilityRole="button"
+                                accessibilityLabel="Reveal answer"
+                            >
+                                <MaterialCommunityIcons name="eye-outline" size={18} color={colors.primary} />
+                                <Text style={[styles.revealText, { color: colors.primary }]}>
+                                    Reveal Answer
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* Confidence rating — appears after reveal */}
+                    {revealed && (
+                        <View style={styles.confidenceSection}>
+                            <Text style={[styles.confidenceTitle, { color: colors.textMuted }]}>
+                                HOW DID YOU DO?
+                            </Text>
+                            <View style={styles.confidenceRow}>
+                                {CONFIDENCE_OPTIONS.map((option) => {
+                                    const selected = confidence[question.id] === option.key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={option.key}
+                                            style={[
+                                                styles.confidenceButton,
+                                                {
+                                                    backgroundColor: selected ? `${option.color}1F` : colors.card,
+                                                    borderColor: selected ? option.color : colors.border,
+                                                    borderRadius: borderRadius.lg,
+                                                },
+                                            ]}
+                                            onPress={() =>
+                                                setConfidence((prev) => ({ ...prev, [question.id]: option.key }))
+                                            }
+                                            accessibilityRole="button"
+                                            accessibilityLabel={`Confidence: ${option.label}`}
+                                        >
+                                            <MaterialCommunityIcons
+                                                name={option.icon as any}
+                                                size={26}
+                                                color={selected ? option.color : colors.textMuted}
+                                            />
+                                            <Text
+                                                style={[
+                                                    styles.confidenceLabel,
+                                                    { color: selected ? option.color : colors.textMuted },
+                                                ]}
+                                            >
+                                                {option.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Next question */}
+                    <TouchableOpacity
+                        style={[
+                            styles.nextButton,
+                            {
+                                backgroundColor: isLast ? colors.card : colors.primary,
+                                borderColor: colors.border,
+                                borderWidth: isLast ? 1 : 0,
+                                borderRadius: borderRadius.round,
+                                opacity: isLast && !revealed ? 0.5 : 1,
+                            },
+                        ]}
+                        onPress={handleNext}
+                        disabled={isLast}
+                        accessibilityRole="button"
+                        accessibilityLabel={isLast ? 'Last question' : 'Next question'}
+                    >
+                        <Text
+                            style={[
+                                styles.nextButtonText,
+                                { color: isLast ? colors.textMuted : '#FFFFFF' },
+                            ]}
+                        >
+                            {isLast ? 'End of session — great work!' : 'Next Question'}
+                        </Text>
+                        {!isLast && <MaterialCommunityIcons name="arrow-right" size={20} color="#FFF" />}
+                    </TouchableOpacity>
+                </ScrollView>
+            )}
         </View>
     );
 };

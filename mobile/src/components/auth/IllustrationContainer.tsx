@@ -4,14 +4,14 @@ import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-export type IllustrationType = 
-  | 'ai-assistant' 
-  | 'brain' 
-  | 'laptop' 
-  | 'analytics' 
-  | 'documents' 
-  | 'graduation' 
-  | 'books' 
+export type IllustrationType =
+  | 'ai-assistant'
+  | 'brain'
+  | 'laptop'
+  | 'analytics'
+  | 'documents'
+  | 'graduation'
+  | 'books'
   | 'scan'
   | 'flashcards';
 
@@ -34,11 +34,11 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
       {/* Mesh glowing blobs */}
       <View style={[styles.glowBlob, { backgroundColor: '#8B5CF6', opacity: 0.2, width: size * 0.9, height: size * 0.9 }]} />
       <View style={[styles.glowBlob, { backgroundColor: '#06B6D4', opacity: 0.15, width: size * 0.7, height: size * 0.7, left: 10, top: 20 }]} />
-      
+
       {/* Concentric rings */}
       <View style={[styles.ring, { width: size * 0.7, height: size * 0.7, borderColor: 'rgba(139, 92, 246, 0.3)' }]} />
       <View style={[styles.ring, { width: size * 0.5, height: size * 0.5, borderColor: 'rgba(6, 182, 212, 0.4)' }]} />
-      
+
       {/* Central Core */}
       <LinearGradient
         colors={['#8B5CF6', '#4F46E5']}
@@ -49,7 +49,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
 
       {/* Floating Sparkles */}
       <View style={[styles.sparkle, { top: '15%', right: '20%' }]}>
-        <MaterialCommunityIcons name={"sparkles" as any} size={size * 0.12} color="#22C55E" />
+        <MaterialCommunityIcons name="star-four-points" size={size * 0.12} color="#22C55E" />
       </View>
       <View style={[styles.sparkle, { bottom: '20%', left: '15%' }]}>
         <MaterialCommunityIcons name="star-four-points" size={size * 0.08} color="#F59E0B" />
@@ -61,7 +61,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#EC4899', opacity: 0.15, width: size * 0.8, height: size * 0.8 }]} />
       <View style={[styles.glowBlob, { backgroundColor: '#8B5CF6', opacity: 0.2, width: size * 0.6, height: size * 0.6 }]} />
-      
+
       <LinearGradient
         colors={['#8B5CF6', '#EC4899']}
         style={[styles.roundedBox, { width: size * 0.45, height: size * 0.45, borderRadius: 28 }]}
@@ -70,7 +70,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
       </LinearGradient>
 
       <View style={[styles.sparkle, { top: '10%', left: '20%' }]}>
-        <MaterialCommunityIcons name={"sparkles" as any} size={22} color="#06B6D4" />
+        <MaterialCommunityIcons name="star-four-points" size={22} color="#06B6D4" />
       </View>
     </View>
   );
@@ -78,7 +78,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderLaptop = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#4F46E5', opacity: 0.15, width: size * 0.9, height: size * 0.8 }]} />
-      
+
       <View style={[styles.laptopBody, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <MaterialCommunityIcons name="laptop" size={size * 0.45} color={colors.text} />
         <View style={styles.laptopBrainOverlay}>
@@ -91,7 +91,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderAnalytics = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#22C55E', opacity: 0.15, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <View style={[styles.graphCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.barRow}>
           <View style={[styles.bar, { height: '30%', backgroundColor: colors.border }]} />
@@ -109,7 +109,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderDocuments = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#3B82F6', opacity: 0.15, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <View style={[styles.docBack, { backgroundColor: colors.border }]} />
       <View style={[styles.docFront, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <MaterialCommunityIcons name="file-document-outline" size={size * 0.28} color="#4F46E5" />
@@ -123,16 +123,16 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderGraduation = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#4F46E5', opacity: 0.15, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <LinearGradient
         colors={['#4F46E5', '#8B5CF6']}
         style={[styles.roundedBox, { width: size * 0.45, height: size * 0.45, borderRadius: 28 }]}
       >
         <MaterialCommunityIcons name="school" size={size * 0.25} color="#FFFFFF" />
       </LinearGradient>
-      
+
       <View style={[styles.sparkle, { top: '15%', right: '15%' }]}>
-        <MaterialCommunityIcons name={"sparkles" as any} size={24} color="#F59E0B" />
+        <MaterialCommunityIcons name="star-four-points" size={24} color="#F59E0B" />
       </View>
     </View>
   );
@@ -140,7 +140,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderBooks = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#F59E0B', opacity: 0.12, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <View style={[styles.bookStack]}>
         <View style={[styles.bookItem, { backgroundColor: '#4F46E5', transform: [{ rotate: '-10deg' }, { translateY: 10 }] }]} />
         <View style={[styles.bookItem, { backgroundColor: '#8B5CF6', transform: [{ rotate: '5deg' }] }]} />
@@ -154,7 +154,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderScan = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#06B6D4', opacity: 0.15, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <View style={[styles.scanFrame, { borderColor: colors.border }]}>
         <MaterialCommunityIcons name="camera-outline" size={size * 0.24} color={colors.text} />
         {/* Scanning horizontal laser line */}
@@ -171,7 +171,7 @@ export const IllustrationContainer: React.FC<IllustrationProps> = ({ type, size 
   const renderFlashcards = () => (
     <View style={[styles.wrapper, containerStyle]}>
       <View style={[styles.glowBlob, { backgroundColor: '#8B5CF6', opacity: 0.15, width: size * 0.9, height: size * 0.9 }]} />
-      
+
       <View style={[styles.cardStack]}>
         <View style={[styles.cardItem, { backgroundColor: colors.border, transform: [{ rotate: '-8deg' }] }]} />
         <View style={[styles.cardItem, { backgroundColor: colors.card, borderColor: colors.border }]}>

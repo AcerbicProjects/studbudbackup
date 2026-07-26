@@ -1,0 +1,26 @@
+{
+  "data": {
+    "subject": "Biology",
+    "totalQuestions": 1,
+    "estimatedTimeMinutes": 2,
+    "questions": [
+      {
+        "id": 1,
+        "type": "mcq",
+        "question": "Based on the provided definition of photosynthesis, what is the primary role of sunlight in this biological process?",
+        "options": [
+          "To act as one of the primary raw materials that are directly transformed into nutrients.",
+          "To serve as the energy source that drives the synthesis of nutrients from other components.",
+          "To facilitate the absorption of water by the plant's roots from the environment.",
+          "To catalyze the breakdown of existing nutrients within the plant for energy release."
+        ],
+        "correctAnswer": "To serve as the energy source that drives the synthesis of nutrients from other components.",
+        "explanation": "The document states that organisms 'use sunlight to synthesize nutrients from carbon dioxide and water.' This indicates that sunlight provides the energy necessary to convert the raw materials (carbon dioxide and water) into nutrients (food), rather than being a raw material itself or performing other functions listed.",
+        "difficulty": "medium",
+        "topic": "Photosynthesis Fundamentals",
+        "estimatedTimeMinutes": 2
+      }
+    ]
+  },
+  "cached": false
+}
