@@ -1,17 +1,19 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated } from 'react-native';
+import { StyleSheet, View, Text, Animated, TouchableOpacity } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTheme } from '../../constants/theme';
 
-interface WeeklyProgressRingProps {
-    percentage?: number; // 0-100
-    studyHours?: string; // e.g. "14.5 hours"
-}
+import { useStudyProgress } from '../../context/StudyProgressContext';
 
 // Create an animated component wrapper for SVG Circle
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-export const WeeklyProgressRing: React.FC<WeeklyProgressRingProps> = ({ percentage = 72, studyHours = "14.5 hrs" }) => {
+export const WeeklyProgressRing: React.FC = () => {
+    const { milliseconds, goalHours, running, ready, error, toggle, setGoal } = useStudyProgress();
+    const percentage = Math.min(100, Math.floor(milliseconds / (goalHours * 3600000) * 100));
+    const seconds = Math.floor(milliseconds / 1000);
+    const studyHours = `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}m ${String(seconds % 60).padStart(2, '0')}s`;
+    const remainingMinutes = Math.max(0, Math.ceil((goalHours * 3600000 - milliseconds) / 60000));
     const { colors, typography, borderRadius } = useTheme();
 
     // Progress metrics
@@ -31,7 +33,7 @@ export const WeeklyProgressRing: React.FC<WeeklyProgressRingProps> = ({ percenta
                 toValue: strokeDashoffset,
                 tension: 15,
                 friction: 6,
-                useNativeDriver: true,
+                useNativeDriver: false,
             }),
             Animated.spring(labelScale, {
                 toValue: 1,
@@ -110,11 +112,26 @@ export const WeeklyProgressRing: React.FC<WeeklyProgressRingProps> = ({ percenta
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
                     <Text style={[styles.tip, { color: colors.text, fontSize: typography.fontSize.xs }]}>
-                        ⚡ Almost there! 2.5 hrs more to complete daily streak.
+                        {remainingMinutes === 0 ? 'Weekly goal complete! Great work.' : `${remainingMinutes} min to reach your ${goalHours} hr weekly goal.`}
                     </Text>
                 </View>
 
             </View>
+            <View accessible accessibilityRole="progressbar" accessibilityLabel="Weekly study goal" accessibilityValue={{ min: 0, max: 100, now: percentage }} style={{ height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden', marginTop: 12 }}>
+                <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: '#8B5CF6', borderRadius: 4 }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
+                <TouchableOpacity accessibilityRole="button" disabled={!ready} onPress={toggle} style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 12, opacity: ready ? 1 : 0.5 }}>
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>{!ready ? 'Loading…' : running ? 'Pause studying' : 'Start studying'}</Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Decrease weekly goal by one hour" disabled={!ready || goalHours <= 1} onPress={() => setGoal(goalHours - 1)} style={{ padding: 10, opacity: goalHours <= 1 ? 0.4 : 1 }}><Text style={{ color: colors.text, fontSize: 22 }}>−</Text></TouchableOpacity>
+                    <Text style={{ color: colors.text }}>{goalHours}h goal</Text>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Increase weekly goal by one hour" disabled={!ready || goalHours >= 40} onPress={() => setGoal(goalHours + 1)} style={{ padding: 10, opacity: goalHours >= 40 ? 0.4 : 1 }}><Text style={{ color: colors.text, fontSize: 22 }}>+</Text></TouchableOpacity>
+                </View>
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 10 }}>Monday–Sunday · Timer pauses when the app leaves the foreground.</Text>
+            {!!error && <Text accessibilityRole="alert" style={{ color: colors.text, marginTop: 8 }}>{error}</Text>}
         </View>
     );
 };

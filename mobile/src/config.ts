@@ -6,7 +6,7 @@ const DEV_API_URL = Platform.select({
   default: 'http://localhost:5000/api',
 });
 
-export const API_URL = DEV_API_URL;
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || DEV_API_URL;
 export default {
   API_URL,
 };

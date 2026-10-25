@@ -59,6 +59,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 }
             ]} />
 
+            <View style={{ marginTop: 8, marginBottom: 16 }}>
+                <WeeklyProgressRing />
+            </View>
+
             {/* --- HERO HERO HERO (Animated Study Desk + Lamp theme Toggle) --- */}
             <View style={[styles.heroBlock, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.25)' : 'rgba(255,255,255,0.45)', borderRadius: borderRadius.xl }]}>
 
@@ -183,10 +187,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 }
             />
 
-            {/* --- WEEKLY PROGRESS WIDGET --- */}
-            <View style={{ marginTop: 24 }}>
-                <WeeklyProgressRing percentage={74} studyHours="16.2 hrs" />
-            </View>
 
         </ScrollView>
     );

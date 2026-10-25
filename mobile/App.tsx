@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, useTheme } from './src/constants/theme';
 import AuthNavigator from './src/navigation/AuthNavigator';
+import { StudyProgressProvider } from './src/context/StudyProgressContext';
 import MainTabScreen from './src/screens/documents/MainTabScreen';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 
@@ -15,7 +16,7 @@ const AppContent = () => {
   return (
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      {user ? <MainTabScreen /> : <AuthNavigator />}
+      {user ? <StudyProgressProvider key={user._id} userId={user._id}><MainTabScreen /></StudyProgressProvider> : <AuthNavigator />}
     </>
   );
 };
