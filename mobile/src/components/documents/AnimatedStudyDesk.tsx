@@ -1,9 +1,23 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Animated, Easing, Text, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, Animated, Easing, Text, ActivityIndicator, AccessibilityInfo } from 'react-native';
 import { useTheme } from '../../constants/theme';
 
-export const AnimatedStudyDesk: React.FC = () => {
+// What the student is doing, driven by the Pomodoro timer. Without a mode the
+// illustration plays its original idle animation.
+export type BuddyMode = 'idle' | 'studying' | 'paused' | 'break' | 'completed';
+
+const STICKY_TEXT: Record<BuddyMode, string> = {
+    idle: '✓ Study',
+    studying: 'Focus',
+    paused: 'Paused',
+    break: 'Break',
+    completed: 'Done!',
+};
+
+export const AnimatedStudyDesk: React.FC<{ mode?: BuddyMode }> = ({ mode = 'idle' }) => {
     const { colors, isDark } = useTheme();
+    // null until the OS setting is known; loops only start once we know motion is allowed
+    const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
 
     // Animations
     const hoverAnim = useRef(new Animated.Value(0)).current;      // coffee steam & plant sway
@@ -11,10 +25,39 @@ export const AnimatedStudyDesk: React.FC = () => {
     const breathingAnim = useRef(new Animated.Value(0)).current;  // student torso breathing
     const particle1 = useRef(new Animated.Value(0)).current;       // floating particles
     const particle2 = useRef(new Animated.Value(0)).current;       // floating particles
+    // State-driven poses (all native-driver friendly)
+    const eyesOpen = useRef(new Animated.Value(1)).current;        // 1 open, ~0.35 drowsy (paused)
+    const headTilt = useRef(new Animated.Value(0)).current;        // 1 = leaning back to stretch (break)
+    const typing = useRef(new Animated.Value(1)).current;          // laptop code lines pulse while studying
+    const screenOn = useRef(new Animated.Value(1)).current;        // laptop dims when not studying
+    const ambient = useRef(new Animated.Value(1)).current;         // dust particles fade out during focus
+    const bounce = useRef(new Animated.Value(0)).current;          // celebration hop
+    const sparkle = useRef(new Animated.Value(0)).current;         // celebration sparkles
 
     useEffect(() => {
+        let active = true;
+        AccessibilityInfo.isReduceMotionEnabled()
+            .then((v) => active && setReduceMotion(v))
+            .catch(() => active && setReduceMotion(false));
+        const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => setReduceMotion(v));
+        return () => {
+            active = false;
+            sub.remove();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (reduceMotion !== false) return; // static scene when Reduce Motion is on
+        let running = true;
+        const loops: Animated.CompositeAnimation[] = [];
+        const track = (a: Animated.CompositeAnimation) => {
+            loops.push(a);
+            a.start();
+        };
+        // Same loops as before; collected so they can all be stopped
+        const loop = Animated.loop;
         // 1. Hover/Breathe helper loop
-        Animated.loop(
+        track(loop(
             Animated.sequence([
                 Animated.timing(hoverAnim, {
                     toValue: 1,
@@ -29,10 +72,10 @@ export const AnimatedStudyDesk: React.FC = () => {
                     useNativeDriver: true,
                 }),
             ])
-        ).start();
+        ));
 
         // 2. Breathing loop (subtle y translation)
-        Animated.loop(
+        track(loop(
             Animated.sequence([
                 Animated.timing(breathingAnim, {
                     toValue: -3,
@@ -47,7 +90,7 @@ export const AnimatedStudyDesk: React.FC = () => {
                     useNativeDriver: true,
                 }),
             ])
-        ).start();
+        ));
 
         // 3. Periodic Blink loop
         const blinkInterval = setInterval(() => {
@@ -59,6 +102,7 @@ export const AnimatedStudyDesk: React.FC = () => {
 
         // 4. Floating particles sequence loops
         const runParticle1 = () => {
+            if (!running) return;
             particle1.setValue(0);
             Animated.timing(particle1, {
                 toValue: 1,
@@ -69,6 +113,7 @@ export const AnimatedStudyDesk: React.FC = () => {
         };
 
         const runParticle2 = () => {
+            if (!running) return;
             particle2.setValue(0);
             Animated.timing(particle2, {
                 toValue: 1,
@@ -82,9 +127,69 @@ export const AnimatedStudyDesk: React.FC = () => {
         runParticle2();
 
         return () => {
+            running = false;
+            loops.forEach((a) => a.stop());
+            particle1.stopAnimation();
+            particle2.stopAnimation();
             clearInterval(blinkInterval);
         };
-    }, []);
+    }, [reduceMotion]);
+
+    // Move into the pose for the current timer state (short eased transitions, no competing loops)
+    useEffect(() => {
+        const duration = reduceMotion ? 0 : 400;
+        const to = (value: Animated.Value, toValue: number) =>
+            Animated.timing(value, { toValue, duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true });
+
+        Animated.parallel([
+            to(eyesOpen, mode === 'paused' ? 0.35 : 1),
+            to(headTilt, mode === 'break' ? 1 : 0),
+            to(screenOn, mode === 'studying' || mode === 'completed' ? 1 : mode === 'idle' ? 1 : 0.45),
+            // Fewer moving bits while the student is concentrating
+            to(ambient, mode === 'studying' || mode === 'paused' ? 0 : 1),
+        ]).start();
+
+        let typingLoop: Animated.CompositeAnimation | null = null;
+        if (mode === 'studying' && !reduceMotion) {
+            typingLoop = Animated.loop(
+                Animated.sequence([
+                    Animated.timing(typing, { toValue: 0.45, duration: 700, useNativeDriver: true }),
+                    Animated.timing(typing, { toValue: 1, duration: 700, useNativeDriver: true }),
+                ])
+            );
+            typingLoop.start();
+        } else {
+            typing.setValue(1);
+        }
+
+        if (mode === 'completed') {
+            sparkle.setValue(0);
+            if (reduceMotion) {
+                sparkle.setValue(1);
+            } else {
+                Animated.parallel([
+                    Animated.sequence([
+                        Animated.timing(bounce, { toValue: -8, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+                        Animated.timing(bounce, { toValue: 0, duration: 220, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+                        Animated.timing(bounce, { toValue: -5, duration: 160, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+                        Animated.timing(bounce, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+                    ]),
+                    Animated.sequence([
+                        Animated.timing(sparkle, { toValue: 1, duration: 300, useNativeDriver: true }),
+                        Animated.delay(600),
+                        Animated.timing(sparkle, { toValue: 0, duration: 400, useNativeDriver: true }),
+                    ]),
+                ]).start();
+            }
+        } else {
+            sparkle.setValue(0);
+            bounce.setValue(0);
+        }
+
+        return () => {
+            typingLoop?.stop();
+        };
+    }, [mode, reduceMotion]);
 
     // Steams movement interpolation
     const steamY = hoverAnim.interpolate({
@@ -96,11 +201,19 @@ export const AnimatedStudyDesk: React.FC = () => {
         outputRange: [0.8, 1, 0],
     });
 
-    // Eyes scale interpolation
-    const eyesScaleY = blinkAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [1, 0.1],
-    });
+    // Eyes scale interpolation (blink, scaled down further when drowsy/paused)
+    const eyesScaleY = Animated.multiply(
+        blinkAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.1],
+        }),
+        eyesOpen
+    );
+    const headRotate = headTilt.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-14deg'] });
+    const headLift = headTilt.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
+    // Break: a fuller cup of steam
+    const steamScale = headTilt.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] });
+    const sparkleScale = sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
 
     // Particle path animations
     const part1TranslateY = particle1.interpolate({
@@ -146,7 +259,7 @@ export const AnimatedStudyDesk: React.FC = () => {
                 {
                     left: 50,
                     transform: [{ translateY: part1TranslateY }, { translateX: part1TranslateX }],
-                    opacity: part1Opacity,
+                    opacity: Animated.multiply(part1Opacity, ambient),
                     backgroundColor: isDark ? '#FEF08A' : '#60A5FA',
                 }
             ]} />
@@ -155,7 +268,7 @@ export const AnimatedStudyDesk: React.FC = () => {
                 {
                     right: 60,
                     transform: [{ translateY: part2TranslateY }, { translateX: part2TranslateX }],
-                    opacity: part2Opacity,
+                    opacity: Animated.multiply(part2Opacity, ambient),
                     backgroundColor: isDark ? '#FEF08A' : '#34D399',
                 }
             ]} />
@@ -174,13 +287,13 @@ export const AnimatedStudyDesk: React.FC = () => {
                 {/* --- STUDENT --- */}
                 <Animated.View style={[
                     styles.studentWrapper,
-                    { transform: [{ translateY: breathingAnim }] }
+                    { transform: [{ translateY: Animated.add(breathingAnim, bounce) }] }
                 ]}>
                     {/* Torso/Body */}
                     <View style={[styles.torso, { backgroundColor: isDark ? '#1E1B4B' : '#E0E7FF' }]} />
 
-                    {/* Head & Face */}
-                    <View style={[styles.head, { backgroundColor: isDark ? '#F59E0B' : '#FDE047' }]}>
+                    {/* Head & Face (tilts back to stretch on a break) */}
+                    <Animated.View style={[styles.head, { backgroundColor: isDark ? '#F59E0B' : '#FDE047', transform: [{ translateY: headLift }, { rotate: headRotate }] }]}>
                         {/* Hair */}
                         <View style={[styles.hair, { backgroundColor: isDark ? '#020617' : '#1E293B' }]} />
                         {/* Focused Eyes */}
@@ -192,7 +305,12 @@ export const AnimatedStudyDesk: React.FC = () => {
                         <View style={styles.glassesBridge} />
                         <View style={styles.glassesRimLeft} />
                         <View style={styles.glassesRimRight} />
-                    </View>
+                    </Animated.View>
+
+                    {/* Celebration sparkles when a session completes */}
+                    <Animated.Text pointerEvents="none" style={[styles.sparkle, { left: -16, top: -40, opacity: sparkle, transform: [{ scale: sparkleScale }] }]}>✦</Animated.Text>
+                    <Animated.Text pointerEvents="none" style={[styles.sparkle, { right: -14, top: -46, opacity: sparkle, transform: [{ scale: sparkleScale }] }]}>✦</Animated.Text>
+                    <Animated.Text pointerEvents="none" style={[styles.sparkle, styles.sparkleSmall, { right: -2, top: -60, opacity: sparkle, transform: [{ scale: sparkleScale }] }]}>✦</Animated.Text>
                 </Animated.View>
 
                 {/* --- DESK SURFACE --- */}
@@ -209,11 +327,12 @@ export const AnimatedStudyDesk: React.FC = () => {
                     ]} />
                     {/* Laptop Lid/Screen */}
                     <View style={[styles.laptopScreen, { backgroundColor: isDark ? '#1E293B' : '#475569' }]}>
-                        <View style={styles.ideMock}>
+                        {/* Code lines pulse while studying; screen dims on pause/break */}
+                        <Animated.View style={[styles.ideMock, { opacity: Animated.multiply(screenOn, typing) }]}>
                             <View style={[styles.ideLine, { width: 30, backgroundColor: '#8B5CF6' }]} />
                             <View style={[styles.ideLine, { width: 45, backgroundColor: '#10B981' }]} />
                             <View style={[styles.ideLine, { width: 25, backgroundColor: '#3B82F6' }]} />
-                        </View>
+                        </Animated.View>
                     </View>
                     {/* Laptop Base */}
                     <View style={[styles.laptopBase, { backgroundColor: isDark ? '#475569' : '#94A3B8' }]} />
@@ -244,7 +363,7 @@ export const AnimatedStudyDesk: React.FC = () => {
                     <Animated.View style={[
                         styles.steamContainer,
                         {
-                            transform: [{ translateY: steamY }],
+                            transform: [{ translateY: steamY }, { scaleY: steamScale }],
                             opacity: steamOpacity
                         }
                     ]}>
@@ -270,7 +389,7 @@ export const AnimatedStudyDesk: React.FC = () => {
 
                 {/* --- TASK LIST / STICKY NOTES --- */}
                 <View style={styles.stickyNote}>
-                    <Text style={styles.stickyText}>✓ Study</Text>
+                    <Text style={styles.stickyText}>{STICKY_TEXT[mode]}</Text>
                 </View>
             </View>
         </View>
@@ -586,6 +705,16 @@ const styles = StyleSheet.create({
         fontSize: 6,
         color: '#854D0E',
         fontWeight: '700',
+    },
+    sparkle: {
+        position: 'absolute',
+        color: '#F59E0B',
+        fontSize: 14,
+        fontWeight: '900',
+    },
+    sparkleSmall: {
+        fontSize: 10,
+        color: '#8B5CF6',
     },
 });
 

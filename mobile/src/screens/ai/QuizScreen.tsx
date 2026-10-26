@@ -5,9 +5,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
-import { AIStackParamList } from '../../types/ai';
+import { AIStackParamList, QuizQuestion } from '../../types/ai';
 import QuizCard from '../../components/ai/QuizCard';
-import { mockQuizQuestions, mockQuizMeta } from '../../data/mockAIData';
+import { AILoading, AIError } from '../../components/ai/AIStatus';
+import AIService from '../../services/AIService';
+import { useAIDocument } from '../../context/AIDocumentContext';
+import useAITool from '../../hooks/useAITool';
 
 const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60);
@@ -15,14 +18,57 @@ const formatTime = (totalSeconds: number) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
-// AI Quiz — one question at a time with progress bar and elapsed timer.
-// Week 1: mock questions; scoring is local. Result is pushed to QuizResult.
+// AI Quiz — loads questions generated from the document, then runs the quiz.
 export const QuizScreen: React.FC = () => {
+    const { colors, typography } = useTheme();
+    const insets = useSafeAreaInsets();
+    const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
+    const { data, isLoading, error, reload } = useAITool((refresh) =>
+        AIService.getQuiz(aiDocument.id, refresh)
+    );
+
+    if (data?.questions.length && !isLoading) {
+        return <QuizRunner questions={data.questions} documentTitle={aiDocument.title} />;
+    }
+
+    return (
+        <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+            <View style={[styles.header, { borderBottomColor: colors.border }]}>
+                <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={styles.headerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Exit quiz"
+                >
+                    <MaterialCommunityIcons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: colors.text, fontSize: typography.fontSize.md }]}>
+                    Quiz
+                </Text>
+                <View style={styles.headerButton} />
+            </View>
+            {isLoading ? (
+                <AILoading message="Writing exam questions from your notes..." />
+            ) : (
+                <AIError message={error || 'No quiz questions were returned.'} onRetry={() => reload(true)} />
+            )}
+        </View>
+    );
+};
+
+interface QuizRunnerProps {
+    questions: QuizQuestion[];
+    documentTitle: string;
+}
+
+// One question at a time with progress bar and elapsed timer. Scoring is local;
+// the result (with the questions, for review) is pushed to QuizResult.
+const QuizRunner: React.FC<QuizRunnerProps> = ({ questions, documentTitle }) => {
     const { colors, borderRadius, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
 
-    const questions = mockQuizQuestions;
     const [index, setIndex] = useState(0);
     const [answers, setAnswers] = useState<Record<string, string | null>>({});
     const [elapsed, setElapsed] = useState(0);
@@ -62,6 +108,7 @@ export const QuizScreen: React.FC = () => {
                 total: questions.length,
                 timeSeconds: elapsed,
                 answers,
+                questions,
             });
 
         if (unanswered > 0) {
@@ -105,8 +152,8 @@ export const QuizScreen: React.FC = () => {
                     <Text style={[styles.progressLabel, { color: colors.textMuted }]}>
                         Question {index + 1} of {questions.length}
                     </Text>
-                    <Text style={[styles.progressLabel, { color: colors.primary }]}>
-                        {mockQuizMeta.documentTitle}
+                    <Text style={[styles.progressLabel, styles.progressDoc, { color: colors.primary }]} numberOfLines={1}>
+                        {documentTitle}
                     </Text>
                 </View>
                 <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -220,6 +267,11 @@ const styles = StyleSheet.create({
     progressLabel: {
         fontSize: 12,
         fontWeight: '600',
+    },
+    progressDoc: {
+        flexShrink: 1,
+        marginLeft: 12,
+        textAlign: 'right',
     },
     progressTrack: {
         height: 6,

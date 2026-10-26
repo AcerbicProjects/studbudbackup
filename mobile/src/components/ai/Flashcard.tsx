@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Animated } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { FlashcardData } from '../../data/mockAIData';
+import { FlashcardData } from '../../types/ai';
 import DifficultyChip from './DifficultyChip';
 
 interface FlashcardProps {

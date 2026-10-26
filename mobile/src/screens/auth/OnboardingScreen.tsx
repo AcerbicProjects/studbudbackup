@@ -26,7 +26,7 @@ export const OnboardingScreen = () => {
   const navigation = useNavigation<NavigationProp<AuthStackParamList>>();
   
   const scrollX = useRef(new Animated.Value(0)).current;
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Floating detail cards for each page to look Behance-like

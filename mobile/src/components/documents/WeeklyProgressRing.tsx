@@ -1,15 +1,36 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, Text, Animated, TouchableOpacity } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
 
 import { useStudyProgress } from '../../context/StudyProgressContext';
+import PomodoroSettingsSheet from '../study/PomodoroSettingsSheet';
+import { dayKey } from '../../utils/studyProgress';
 
 // Create an animated component wrapper for SVG Circle
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+const formatCountdown = (ms: number) => {
+    const total = Math.ceil(ms / 1000);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
 export const WeeklyProgressRing: React.FC = () => {
-    const { milliseconds, goalHours, running, ready, error, toggle, setGoal } = useStudyProgress();
+    const { milliseconds, goalHours, ready, error, toggle, setGoal, timer, settings, sessions, reset, breakNow } = useStudyProgress();
+    const [settingsOpen, setSettingsOpen] = useState(false);
+
+    const todaySessions = sessions[dayKey(new Date())] || 0;
+    const countdown = formatCountdown(timer.phase === 'idle' ? settings.studyMinutes * 60000 : timer.remainingMs);
+    const onBreak = timer.phase === 'break';
+    const phaseLabel = timer.phase === 'idle'
+        ? 'READY TO FOCUS'
+        : `${onBreak ? (timer.breakKind === 'long' ? 'LONG BREAK' : 'BREAK') : 'FOCUS SESSION'}${timer.paused ? ' · PAUSED' : ''}`;
+    const phaseColor = onBreak ? '#22C55E' : '#8B5CF6';
+    // Short labels while a phase runs, so the countdown keeps its room next to the stop button
+    const primaryLabel = !ready ? 'Loading…'
+        : timer.phase === 'idle' ? 'Start studying'
+            : timer.paused ? 'Resume' : 'Pause';
     const percentage = Math.min(100, Math.floor(milliseconds / (goalHours * 3600000) * 100));
     const seconds = Math.floor(milliseconds / 1000);
     const studyHours = `${Math.floor(seconds / 3600)}h ${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}m ${String(seconds % 60).padStart(2, '0')}s`;
@@ -120,23 +141,100 @@ export const WeeklyProgressRing: React.FC = () => {
             <View accessible accessibilityRole="progressbar" accessibilityLabel="Weekly study goal" accessibilityValue={{ min: 0, max: 100, now: percentage }} style={{ height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden', marginTop: 12 }}>
                 <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: '#8B5CF6', borderRadius: 4 }} />
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 }}>
-                <TouchableOpacity accessibilityRole="button" disabled={!ready} onPress={toggle} style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 12, opacity: ready ? 1 : 0.5 }}>
-                    <Text style={{ color: '#FFF', fontWeight: '700' }}>{!ready ? 'Loading…' : running ? 'Pause studying' : 'Start studying'}</Text>
-                </TouchableOpacity>
+            {/* Pomodoro: the study timer that feeds the numbers above */}
+            <View style={[styles.pomodoroRow, { backgroundColor: colors.inputBg, borderRadius: borderRadius.lg }]}>
+                <View style={{ flex: 1 }}>
+                    {timer.phase === 'idle' ? (
+                        // Tapping "Ready to focus" starts a short break instead
+                        <TouchableOpacity
+                            onPress={breakNow}
+                            disabled={!ready}
+                            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                            style={styles.phaseTap}
+                            accessibilityRole="button"
+                            accessibilityLabel="Ready to focus. Tap to take a break"
+                        >
+                            <Text style={[styles.phaseLabel, { color: phaseColor }]}>{phaseLabel}</Text>
+                            <MaterialCommunityIcons name="coffee-outline" size={12} color={phaseColor} />
+                        </TouchableOpacity>
+                    ) : (
+                        <Text style={[styles.phaseLabel, { color: phaseColor }]}>{phaseLabel}</Text>
+                    )}
+                    <Text accessibilityRole="timer" numberOfLines={1} style={[styles.countdown, { color: colors.text }]}>{countdown}</Text>
+                    <Text style={[styles.sessionInfo, { color: colors.textMuted }]}>
+                        {todaySessions} {todaySessions === 1 ? 'session' : 'sessions'} done today · {settings.studyMinutes}/{settings.shortBreakMinutes} min
+                    </Text>
+                </View>
+                <View style={styles.pomodoroButtons}>
+                    {timer.phase !== 'idle' && (
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel={timer.phase === 'study' ? 'Stop session' : 'End break'} disabled={!ready} onPress={reset} style={[styles.iconButton, { borderColor: colors.border }]}>
+                            <MaterialCommunityIcons name="stop" size={18} color={colors.text} />
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Pomodoro settings" disabled={!ready} onPress={() => setSettingsOpen(true)} style={[styles.iconButton, { borderColor: colors.border }]}>
+                        <MaterialCommunityIcons name="cog-outline" size={18} color={colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity accessibilityRole="button" disabled={!ready} onPress={toggle} style={{ backgroundColor: '#8B5CF6', borderRadius: 12, padding: 12, opacity: ready ? 1 : 0.5 }}>
+                        <Text style={{ color: '#FFF', fontWeight: '700' }}>{primaryLabel}</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 6 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Decrease weekly goal by one hour" disabled={!ready || goalHours <= 1} onPress={() => setGoal(goalHours - 1)} style={{ padding: 10, opacity: goalHours <= 1 ? 0.4 : 1 }}><Text style={{ color: colors.text, fontSize: 22 }}>−</Text></TouchableOpacity>
                     <Text style={{ color: colors.text }}>{goalHours}h goal</Text>
                     <TouchableOpacity accessibilityRole="button" accessibilityLabel="Increase weekly goal by one hour" disabled={!ready || goalHours >= 40} onPress={() => setGoal(goalHours + 1)} style={{ padding: 10, opacity: goalHours >= 40 ? 0.4 : 1 }}><Text style={{ color: colors.text, fontSize: 22 }}>+</Text></TouchableOpacity>
                 </View>
             </View>
-            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 10 }}>Monday–Sunday · Timer pauses when the app leaves the foreground.</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Monday–Sunday · Only study sessions count, never breaks. The timer keeps running in the background.</Text>
             {!!error && <Text accessibilityRole="alert" style={{ color: colors.text, marginTop: 8 }}>{error}</Text>}
+            <PomodoroSettingsSheet visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
+    pomodoroRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        marginTop: 14,
+        gap: 10,
+    },
+    phaseTap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        alignSelf: 'flex-start',
+    },
+    phaseLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 0.6,
+    },
+    countdown: {
+        fontSize: 28,
+        fontWeight: '900',
+        fontVariant: ['tabular-nums'],
+        letterSpacing: -0.5,
+    },
+    sessionInfo: {
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    pomodoroButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    iconButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     card: {
         padding: 16,
         borderWidth: 1,

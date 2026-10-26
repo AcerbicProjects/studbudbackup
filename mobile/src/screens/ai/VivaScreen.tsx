@@ -5,9 +5,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
-import { AIStackParamList } from '../../types/ai';
+import { AIStackParamList, VivaQuestion } from '../../types/ai';
 import DifficultyChip from '../../components/ai/DifficultyChip';
-import { VivaQuestion, mockVivaQuestions } from '../../data/mockAIData';
+import { AILoading, AIError } from '../../components/ai/AIStatus';
+import AIService from '../../services/AIService';
+import { useAIDocument } from '../../context/AIDocumentContext';
+import useAITool from '../../hooks/useAITool';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -21,14 +24,53 @@ const CONFIDENCE_OPTIONS: { key: Confidence; label: string; icon: string; color:
     { key: 'high', label: 'Nailed it', icon: 'emoticon-excited-outline', color: '#22C55E' },
 ];
 
-// Viva Preparation — oral exam practice. Read the question aloud, answer it
-// yourself, reveal the model answer, then rate your confidence.
+// Viva Preparation — loads examiner questions generated from the document.
 export const VivaScreen: React.FC = () => {
+    const { colors, typography } = useTheme();
+    const insets = useSafeAreaInsets();
+    const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
+    const { data, isLoading, error, reload } = useAITool((refresh) =>
+        AIService.getViva(aiDocument.id, refresh)
+    );
+
+    if (data?.length && !isLoading) {
+        return <VivaSession initialQuestions={data} />;
+    }
+
+    return (
+        <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+            <View style={[styles.header, { borderBottomColor: colors.border }]}>
+                <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={styles.headerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Go back"
+                >
+                    <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: colors.text, fontSize: typography.fontSize.md }]}>
+                    Viva Preparation
+                </Text>
+                <View style={styles.headerButton} />
+            </View>
+            {isLoading ? (
+                <AILoading message="Preparing examiner questions..." />
+            ) : (
+                <AIError message={error || 'No viva questions were returned.'} onRetry={() => reload(true)} />
+            )}
+        </View>
+    );
+};
+
+// Oral exam practice. Read the question aloud, answer it yourself, reveal the
+// model answer, then rate your confidence.
+const VivaSession: React.FC<{ initialQuestions: VivaQuestion[] }> = ({ initialQuestions }) => {
     const { colors, borderRadius, typography, shadows } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
 
-    const [questions, setQuestions] = useState<VivaQuestion[]>(mockVivaQuestions);
+    const [questions, setQuestions] = useState<VivaQuestion[]>(initialQuestions);
     const [index, setIndex] = useState(0);
     const [revealed, setRevealed] = useState(false);
     const [confidence, setConfidence] = useState<Record<string, Confidence>>({});

@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Animated, Dimensions, Alert } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
+import SubjectChips from '../../components/documents/SubjectChips';
+import { ALL_FOLDER, folderToSubject, useDocuments } from '../../context/DocumentsContext';
+import { StudyDocument, getErrorMessage } from '../../services/DocumentService';
 
 const { width } = Dimensions.get('window');
 
+// The system file picker can browse the device and any installed cloud drive apps
 const STORAGE_PROVIDERS = [
     { id: 'device', name: 'From Device', icon: 'tablet-cellphone', color: '#8B5CF6' },
     { id: 'gdrive', name: 'Google Drive', icon: 'google-drive', color: '#10B981' },
@@ -14,66 +19,81 @@ const STORAGE_PROVIDERS = [
     { id: 'onedrive', name: 'OneDrive', icon: 'cloud-upload-outline', color: '#0EA5E9' },
 ];
 
-export const UploadScreen: React.FC = () => {
+const ACCEPTED_TYPES = ['application/pdf', 'image/*', 'text/plain', 'text/markdown'];
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+interface UploadScreenProps {
+    onOpenDocument?: (docId: string) => void;
+}
+
+export const UploadScreen: React.FC<UploadScreenProps> = ({ onOpenDocument }) => {
     const { colors, typography, borderRadius, isDark } = useTheme();
     const insets = useSafeAreaInsets();
+    const { uploadDocument, selectedFolder } = useDocuments();
 
     // Progress animation states
     const [isUploading, setIsUploading] = useState(false);
     const [uploadPercent, setUploadPercent] = useState(0);
     const [isSuccess, setIsSuccess] = useState(false);
     const [activeFileName, setActiveFileName] = useState('');
+    const [uploadedDoc, setUploadedDoc] = useState<StudyDocument | null>(null);
 
     // Animated values
     const progressAnim = React.useRef(new Animated.Value(0)).current;
     const successScale = React.useRef(new Animated.Value(0)).current;
 
-    const triggerUploadMock = (providerName: string) => {
+    const setProgress = (percent: number) => {
+        setUploadPercent(percent);
+        Animated.timing(progressAnim, {
+            toValue: percent,
+            duration: 200,
+            useNativeDriver: false,
+        }).start();
+    };
+
+    const triggerUpload = async () => {
         if (isUploading) return;
 
-        // Choose a realistic lecture file name
-        const files = [
-            "Calculus_Exam_Review.pdf",
-            "Organic_Chemistry_Synthesis.pdf",
-            "Network_Protocols_Lecture5.pdf",
-            "Intro_To_MachineLearning.pdf"
-        ];
-        const chosenFile = files[Math.floor(Math.random() * files.length)] || "StudyNotes.pdf";
+        const result = await DocumentPicker.getDocumentAsync({
+            type: ACCEPTED_TYPES,
+            copyToCacheDirectory: true,
+            multiple: false,
+        });
+        if (result.canceled || !result.assets?.length) return;
 
-        setActiveFileName(chosenFile);
+        const asset = result.assets[0];
+        if (asset.size && asset.size > MAX_FILE_BYTES) {
+            Alert.alert('File too large', 'Please choose a file under 20MB.');
+            return;
+        }
+
+        setActiveFileName(asset.name);
         setIsUploading(true);
         setIsSuccess(false);
-        setUploadPercent(0);
+        setUploadedDoc(null);
         progressAnim.setValue(0);
         successScale.setValue(0);
+        setProgress(0);
 
-        // Simulate progress
-        let currentPct = 0;
-        const interval = setInterval(() => {
-            currentPct += 15;
-            if (currentPct >= 100) {
-                currentPct = 100;
-                clearInterval(interval);
-
-                // Show success animation
-                setTimeout(() => {
-                    setIsUploading(false);
-                    setIsSuccess(true);
-                    Animated.spring(successScale, {
-                        toValue: 1,
-                        friction: 4,
-                        tension: 50,
-                        useNativeDriver: true,
-                    }).start();
-                }, 300);
-            }
-            setUploadPercent(currentPct);
-            Animated.timing(progressAnim, {
-                toValue: currentPct,
-                duration: 200,
-                useNativeDriver: false,
+        try {
+            const doc = await uploadDocument(
+                { uri: asset.uri, name: asset.name, mimeType: asset.mimeType || 'application/pdf' },
+                { source: 'upload', subject: folderToSubject(selectedFolder) },
+                setProgress
+            );
+            setUploadedDoc(doc);
+            setIsSuccess(true);
+            Animated.spring(successScale, {
+                toValue: 1,
+                friction: 4,
+                tension: 50,
+                useNativeDriver: true,
             }).start();
-        }, 250);
+        } catch (err) {
+            Alert.alert('Upload failed', getErrorMessage(err));
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     return (
@@ -93,6 +113,12 @@ export const UploadScreen: React.FC = () => {
                 </Text>
             </View>
 
+            {/* Destination folder (same selection as Home) */}
+            <Text style={[styles.saveToLabel, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
+                {selectedFolder === ALL_FOLDER ? 'SAVE TO · AI picks the subject' : `SAVE TO · ${selectedFolder.toUpperCase()}`}
+            </Text>
+            <SubjectChips editable={false} />
+
             {/* Main Glass Center Drop/Choose Area */}
             <View style={[
                 styles.uploadDashboard,
@@ -105,24 +131,30 @@ export const UploadScreen: React.FC = () => {
 
                 {/* Animated UI depending on upload status */}
                 {!isUploading && !isSuccess && (
-                    <View style={styles.emptyState}>
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={triggerUpload}
+                        style={styles.emptyState}
+                        accessibilityRole="button"
+                        accessibilityLabel="Choose a file to upload"
+                    >
                         <View style={[styles.avatarCircle, { backgroundColor: 'rgba(139, 92, 246, 0.12)' }]}>
                             <MaterialCommunityIcons name="cloud-upload" size={44} color="#8B5CF6" />
                         </View>
                         <Text style={[styles.emptyTitle, { color: colors.text, fontSize: typography.fontSize.md }]}>
-                            Drag 'n Drop Files
+                            Tap to Choose a File
                         </Text>
                         <Text style={[styles.emptySub, { color: colors.textMuted, fontSize: typography.fontSize.xs + 1 }]}>
-                            PDF, PPTX, or DOC formats up to 15MB
+                            PDF, image or text files up to 20MB
                         </Text>
-                    </View>
+                    </TouchableOpacity>
                 )}
 
                 {/* Upload Process indicator */}
                 {isUploading && (
                     <View style={styles.runningProcess}>
                         <Text style={[styles.activeFile, { color: colors.text, fontSize: typography.fontSize.sm + 1 }]}>
-                            Parsing Document...
+                            {uploadPercent < 100 ? 'Uploading Document...' : 'Reading & Analyzing...'}
                         </Text>
                         <Text style={[styles.fileName, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
                             {activeFileName}
@@ -142,7 +174,7 @@ export const UploadScreen: React.FC = () => {
                             ]} />
                         </View>
                         <Text style={[styles.pctDisplay, { color: '#8B5CF6', fontSize: typography.fontSize.sm }]}>
-                            {uploadPercent}% uploaded
+                            {uploadPercent < 100 ? `${uploadPercent}% uploaded` : 'Extracting text, almost done'}
                         </Text>
                     </View>
                 )}
@@ -158,17 +190,29 @@ export const UploadScreen: React.FC = () => {
                             Analysis Successful!
                         </Text>
                         <Text style={[styles.completeSub, { color: colors.textMuted, fontSize: typography.fontSize.xs + 1 }]}>
-                            "{activeFileName}" added to Document Hub.
+                            "{uploadedDoc?.title || activeFileName}" added to Document Hub.
                         </Text>
 
-                        <TouchableOpacity
-                            onPress={() => setIsSuccess(false)}
-                            style={[styles.dismissBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
-                        >
-                            <Text style={[styles.dismissText, { color: colors.text, fontSize: typography.fontSize.xs }]}>
-                                Upload Another File
-                            </Text>
-                        </TouchableOpacity>
+                        <View style={styles.successActions}>
+                            {uploadedDoc && onOpenDocument && (
+                                <TouchableOpacity
+                                    onPress={() => onOpenDocument(uploadedDoc._id)}
+                                    style={[styles.dismissBtn, { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
+                                >
+                                    <Text style={[styles.dismissText, { color: '#FFF', fontSize: typography.fontSize.xs }]}>
+                                        Open Document
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                                onPress={() => setIsSuccess(false)}
+                                style={[styles.dismissBtn, { backgroundColor: colors.inputBg, borderColor: colors.border }]}
+                            >
+                                <Text style={[styles.dismissText, { color: colors.text, fontSize: typography.fontSize.xs }]}>
+                                    Upload Another File
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </Animated.View>
                 )}
 
@@ -183,7 +227,8 @@ export const UploadScreen: React.FC = () => {
                 {STORAGE_PROVIDERS.map((provider) => (
                     <TouchableOpacity
                         key={provider.id}
-                        onPress={() => triggerUploadMock(provider.name)}
+                        onPress={triggerUpload}
+                        disabled={isUploading}
                         activeOpacity={0.8}
                         style={[
                             styles.providerCard,
@@ -215,6 +260,16 @@ export const UploadScreen: React.FC = () => {
 const styles = StyleSheet.create({
     mainBg: {
         flex: 1,
+    },
+    successActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    saveToLabel: {
+        fontWeight: '800',
+        letterSpacing: 0.6,
+        marginBottom: 8,
+        paddingHorizontal: 4,
     },
     contentPadding: {
         paddingHorizontal: 16,

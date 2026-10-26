@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { FormulaData } from '../../data/mockAIData';
+import { FormulaData } from '../../types/ai';
 
 interface FormulaCardProps {
     formula: FormulaData;

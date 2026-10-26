@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AINavigator } from '../../navigation/AINavigator';
 
-import { documents as mockDocs } from '../../data/documents';
+import { useDocuments } from '../../context/DocumentsContext';
+import { getDocumentIcon } from '../../components/documents/DocumentCard';
+import DocumentService, {
+    formatFileSize,
+    formatStudyTime,
+    getErrorMessage,
+} from '../../services/DocumentService';
 
 const { width } = Dimensions.get('window');
 
@@ -18,16 +24,54 @@ interface DocumentDetailScreenProps {
 export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ documentId, onBackPress }) => {
     const { colors, typography, borderRadius, isDark } = useTheme();
     const insets = useSafeAreaInsets();
+    const { documents, toggleFavorite } = useDocuments();
 
-    // Find document from mock records
-    const document = mockDocs.find((doc) => doc.id === documentId) || mockDocs[0]!;
+    const document = documents.find((doc) => doc._id === documentId);
+    const [textPreview, setTextPreview] = useState<string | null>(null);
 
     // When true, the AI tools hub replaces the document detail view
     const [showAITools, setShowAITools] = useState(false);
 
+    // Fetching the document also marks it as opened; time spent here counts as study time
+    useEffect(() => {
+        const openedAt = Date.now();
+        DocumentService.get(documentId)
+            .then((doc) => setTextPreview(doc.textPreview || ''))
+            .catch(() => setTextPreview(''));
+        return () => {
+            const seconds = Math.round((Date.now() - openedAt) / 1000);
+            if (seconds >= 5) {
+                DocumentService.update(documentId, { addStudySeconds: seconds }).catch(() => {});
+            }
+        };
+    }, [documentId]);
+
+    const handleOpenFile = () => {
+        if (!document) return;
+        Linking.openURL(document.fileUrl).catch((err) =>
+            Alert.alert('Could not open file', getErrorMessage(err))
+        );
+    };
+
+    if (!document) {
+        return (
+            <View style={[styles.mainBg, styles.centered, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color="#8B5CF6" />
+                <TouchableOpacity onPress={onBackPress} style={{ marginTop: 16 }}>
+                    <Text style={{ color: '#8B5CF6', fontWeight: '700' }}>Go back</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
     // --- AI Accelerator Tools hub view ---
     if (showAITools) {
-        return <AINavigator onBack={() => setShowAITools(false)} />;
+        return (
+            <AINavigator
+                document={{ id: document._id, title: document.title, subject: document.subject }}
+                onBack={() => setShowAITools(false)}
+            />
+        );
     }
 
     // --- Normal document detail view ---
@@ -48,9 +92,16 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                 </Text>
 
                 <TouchableOpacity
+                    onPress={() => toggleFavorite(document._id)}
                     style={[styles.backBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Bookmark document"
                 >
-                    <MaterialCommunityIcons name="bookmark-outline" size={20} color={colors.text} />
+                    <MaterialCommunityIcons
+                        name={document.favorite ? 'bookmark' : 'bookmark-outline'}
+                        size={20}
+                        color={document.favorite ? '#8B5CF6' : colors.text}
+                    />
                 </TouchableOpacity>
             </View>
 
@@ -58,20 +109,27 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                 contentContainerStyle={[styles.contentPadding, { paddingBottom: 110 }]}
                 showsVerticalScrollIndicator={false}
             >
-                {/* PDF Document Preview Area representation */}
-                <View style={[styles.pdfMockPreview, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}>
+                {/* Document file card: tap to open the original file */}
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={handleOpenFile}
+                    style={[styles.pdfMockPreview, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.xl }]}
+                >
                     <LinearGradient
                         colors={['transparent', 'rgba(0,0,0,0.03)']}
                         style={StyleSheet.absoluteFill}
                     />
-                    <MaterialCommunityIcons name="file-pdf-box" size={72} color="#8B5CF6" />
-                    <Text style={[styles.pdfFileName, { color: colors.text, fontSize: typography.fontSize.sm }]}>
-                        {document.title}
+                    <MaterialCommunityIcons name={getDocumentIcon(document.mimeType) as any} size={72} color="#8B5CF6" />
+                    <Text
+                        numberOfLines={1}
+                        style={[styles.pdfFileName, { color: colors.text, fontSize: typography.fontSize.sm }]}
+                    >
+                        {document.originalName || document.title}
                     </Text>
                     <Text style={[styles.pdfFileSize, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
-                        {document.pages} Pages • Mock PDF Preview Mode
+                        {document.pages} {document.pages === 1 ? 'Page' : 'Pages'} • {formatFileSize(document.size)} • Tap to open
                     </Text>
-                </View>
+                </TouchableOpacity>
 
                 {/* Informational description panel */}
                 <View style={styles.metaPanel}>
@@ -80,7 +138,9 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                             <Text style={styles.tagLabelText}>{document.subject}</Text>
                         </View>
                         <View style={[styles.tagBadge, { backgroundColor: colors.border }]}>
-                            <Text style={[styles.tagLabelText, { color: colors.text }]}>Study Buddy AI Pin</Text>
+                            <Text style={[styles.tagLabelText, { color: colors.text }]}>
+                                {document.source === 'scan' ? 'Scanned' : 'Uploaded'}
+                            </Text>
                         </View>
                     </View>
 
@@ -92,8 +152,8 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                     <View style={styles.metricsRow}>
                         <View style={[styles.metricCard, { backgroundColor: colors.inputBg, borderRadius: borderRadius.md }]}>
                             <MaterialCommunityIcons name="timer-outline" size={20} color="#8B5CF6" />
-                            <Text style={[styles.metricValue, { color: colors.text }]}>{document.studyTime}</Text>
-                            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Study Limit</Text>
+                            <Text style={[styles.metricValue, { color: colors.text }]}>{formatStudyTime(document.studySeconds)}</Text>
+                            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Study Time</Text>
                         </View>
 
                         <View style={[styles.metricCard, { backgroundColor: colors.inputBg, borderRadius: borderRadius.md }]}>
@@ -102,6 +162,23 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
                             <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Coverage</Text>
                         </View>
                     </View>
+                </View>
+
+                {/* Text the AI tools work from (shows what OCR / PDF parsing picked up) */}
+                <Text style={[styles.sectionHeading, { color: colors.text, fontSize: typography.fontSize.md }]}>
+                    Extracted Text
+                </Text>
+                <View style={[styles.textPreviewCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.lg }]}>
+                    {textPreview === null ? (
+                        <ActivityIndicator color="#8B5CF6" />
+                    ) : (
+                        <Text
+                            numberOfLines={8}
+                            style={[styles.textPreview, { color: colors.textMuted, fontSize: typography.fontSize.xs + 1 }]}
+                        >
+                            {textPreview || 'No text preview available.'}
+                        </Text>
+                    )}
                 </View>
 
                 {/* --- AI ACCELERATOR TOOLS — single entry point --- */}
@@ -173,6 +250,18 @@ export const DocumentDetailScreen: React.FC<DocumentDetailScreenProps> = ({ docu
 const styles = StyleSheet.create({
     mainBg: {
         flex: 1,
+    },
+    centered: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    textPreviewCard: {
+        borderWidth: 1,
+        padding: 14,
+    },
+    textPreview: {
+        fontWeight: '500',
+        lineHeight: 18,
     },
     headerRow: {
         flexDirection: 'row',

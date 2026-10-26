@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,7 +8,14 @@ import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import ScoreCircle from '../../components/ai/ScoreCircle';
 import QuizCard from '../../components/ai/QuizCard';
-import { mockQuizQuestions, mockQuizFeedback } from '../../data/mockAIData';
+import LoadingSkeleton from '../../components/ai/LoadingSkeleton';
+import AIService from '../../services/AIService';
+import { useAIDocument } from '../../context/AIDocumentContext';
+import { useDocuments } from '../../context/DocumentsContext';
+import DocumentService from '../../services/DocumentService';
+
+const isCorrectAnswer = (answer: string | null | undefined, correct: string) =>
+    (answer ?? '').trim().toLowerCase() === correct.trim().toLowerCase();
 
 const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60);
@@ -23,11 +30,45 @@ export const QuizResultScreen: React.FC = () => {
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
     const route = useRoute<RouteProp<AIStackParamList, 'QuizResult'>>();
 
-    const { correct, total, timeSeconds, answers } = route.params;
+    const { correct, total, timeSeconds, answers, questions } = route.params;
     const wrong = total - correct;
     const percentage = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const aiDocument = useAIDocument();
+    const { replaceDocument } = useDocuments();
 
     const [reviewOpen, setReviewOpen] = useState(false);
+    const [feedback, setFeedback] = useState<string | null>(null);
+
+    // Save the score (feeds the Track tab and document coverage), then ask the AI for
+    // personalised feedback on what was missed
+    useEffect(() => {
+        let active = true;
+        DocumentService.recordQuizAttempt(aiDocument.id, correct, total)
+            .then(replaceDocument)
+            .catch(() => {});
+        AIService.quizFeedback(
+            aiDocument.id,
+            questions.map((q) => ({
+                question: q.question,
+                yourAnswer: answers[q.id] ?? null,
+                correctAnswer: q.correctAnswer,
+                correct: isCorrectAnswer(answers[q.id], q.correctAnswer),
+            }))
+        )
+            .then((text) => active && setFeedback(text))
+            .catch(() => {
+                if (!active) return;
+                const missed = questions.filter((q) => !isCorrectAnswer(answers[q.id], q.correctAnswer));
+                setFeedback(
+                    missed.length === 0
+                        ? 'Perfect score! You know this material well. Try regenerating the quiz for fresh questions.'
+                        : `Review these before your next attempt: ${missed.slice(0, 3).map((q) => `"${q.question}"`).join(', ')}. Open "Review Answers" below to see the explanations.`
+                );
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const headline =
         percentage >= 80 ? 'Excellent work! 🎉' : percentage >= 50 ? 'Good effort! 👍' : 'Keep practicing! 💪';
@@ -107,14 +148,22 @@ export const QuizResultScreen: React.FC = () => {
                         <MaterialCommunityIcons name="robot-happy-outline" size={18} color={colors.secondary} />
                         <Text style={[styles.feedbackTitle, { color: colors.secondary }]}>AI FEEDBACK</Text>
                     </View>
-                    <Text
-                        style={[
-                            styles.feedbackText,
-                            { color: colors.text, fontSize: typography.fontSize.sm + 1 },
-                        ]}
-                    >
-                        {mockQuizFeedback}
-                    </Text>
+                    {feedback === null ? (
+                        <View>
+                            <LoadingSkeleton height={12} width="95%" />
+                            <LoadingSkeleton height={12} width="85%" style={{ marginTop: 8 }} />
+                            <LoadingSkeleton height={12} width="60%" style={{ marginTop: 8 }} />
+                        </View>
+                    ) : (
+                        <Text
+                            style={[
+                                styles.feedbackText,
+                                { color: colors.text, fontSize: typography.fontSize.sm + 1 },
+                            ]}
+                        >
+                            {feedback}
+                        </Text>
+                    )}
                 </View>
 
                 {/* Actions */}
@@ -160,7 +209,7 @@ export const QuizResultScreen: React.FC = () => {
                 {/* Answer review */}
                 {reviewOpen && (
                     <View style={styles.reviewList}>
-                        {mockQuizQuestions.map((q) => (
+                        {questions.map((q) => (
                             <View key={q.id} style={styles.reviewItem}>
                                 <QuizCard
                                     question={q}

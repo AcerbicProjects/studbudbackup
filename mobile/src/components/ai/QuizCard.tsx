@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { QuizQuestion } from '../../data/mockAIData';
+import { QuizQuestion } from '../../types/ai';
 import DifficultyChip from './DifficultyChip';
 
 interface QuizCardProps {

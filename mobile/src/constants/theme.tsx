@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useColorScheme, Animated, Easing, View, StyleSheet } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 export const COLORS = {
   primary: '#4F46E5',
@@ -111,41 +112,95 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const THEME_STORAGE_KEY = 'studybuddy_theme';
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const systemScheme = useColorScheme();
   const [theme, setTheme] = useState<ThemeType>(systemScheme === 'dark' ? 'dark' : 'light');
+  // Once the user picks a mode it sticks; the system scheme only applies until then
+  const userChoseRef = useRef(false);
+
+  // Full-screen veil in the old background color that fades out after a switch
+  const fadeOpacity = useRef(new Animated.Value(0)).current;
+  const [fadeColor, setFadeColor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (systemScheme === 'light' || systemScheme === 'dark') {
+    SecureStore.getItemAsync(THEME_STORAGE_KEY)
+      .then((saved) => {
+        if (saved === 'light' || saved === 'dark') {
+          userChoseRef.current = true;
+          setTheme(saved);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!userChoseRef.current && (systemScheme === 'light' || systemScheme === 'dark')) {
       setTheme(systemScheme);
     }
   }, [systemScheme]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: ThemeType = prev === 'light' ? 'dark' : 'light';
+      userChoseRef.current = true;
+      SecureStore.setItemAsync(THEME_STORAGE_KEY, next).catch(() => {});
 
-  const colors = theme === 'light' ? COLORS.light : COLORS.dark;
-  const shadows = theme === 'light' ? SHADOWS.light : SHADOWS.dark;
-  const isDark = theme === 'dark';
+      // Cover the swap with the old background, then fade it away on the native thread
+      setFadeColor(COLORS[prev].background);
+      fadeOpacity.stopAnimation();
+      fadeOpacity.setValue(1);
+      return next;
+    });
+  }, [fadeOpacity]);
+
+  useEffect(() => {
+    if (!fadeColor) return;
+    const animation = Animated.timing(fadeOpacity, {
+      toValue: 0,
+      duration: 380,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished) setFadeColor(null);
+    });
+    return () => animation.stop();
+  }, [fadeColor, theme, fadeOpacity]);
+
+  // Memoised so screens only re-render when the theme actually changes
+  const value = useMemo<ThemeContextType>(() => ({
+    theme,
+    toggleTheme,
+    colors: theme === 'light' ? COLORS.light : COLORS.dark,
+    isDark: theme === 'dark',
+    spacing: SPACING,
+    borderRadius: BORDER_RADIUS,
+    shadows: theme === 'light' ? SHADOWS.light : SHADOWS.dark,
+    typography: TYPOGRAPHY,
+  }), [theme, toggleTheme]);
 
   return (
-    <ThemeContext.Provider
-      value={{
-        theme,
-        toggleTheme,
-        colors,
-        isDark,
-        spacing: SPACING,
-        borderRadius: BORDER_RADIUS,
-        shadows,
-        typography: TYPOGRAPHY,
-      }}
-    >
-      {children}
+    <ThemeContext.Provider value={value}>
+      <View style={styles.root}>
+        {children}
+        {fadeColor && (
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: fadeColor, opacity: fadeOpacity }]}
+          />
+        )}
+      </View>
     </ThemeContext.Provider>
   );
 };
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});
 
 export const useTheme = () => {
   const context = useContext(ThemeContext);

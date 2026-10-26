@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../constants/theme';
-import { Difficulty } from '../../data/mockAIData';
+import { Difficulty } from '../../types/ai';
 
 interface DifficultyChipProps {
     difficulty: Difficulty;

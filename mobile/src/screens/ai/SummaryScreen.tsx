@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Share } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,19 +8,34 @@ import { useTheme } from '../../constants/theme';
 import { AIStackParamList } from '../../types/ai';
 import SummaryCard from '../../components/ai/SummaryCard';
 import FormulaCard from '../../components/ai/FormulaCard';
-import {
-    mockSummaryMeta,
-    mockSummaryOverview,
-    mockSummarySections,
-    mockFormulas,
-} from '../../data/mockAIData';
+import { AILoading, AIError } from '../../components/ai/AIStatus';
+import AIService from '../../services/AIService';
+import { useAIDocument } from '../../context/AIDocumentContext';
+import useAITool from '../../hooks/useAITool';
 
-// Smart Summary — structured revision view of the uploaded document.
-// Week 1: static mock content. Copy/share actions become functional in Week 2.
+// Smart Summary — structured revision view generated from the document by the AI.
 export const SummaryScreen: React.FC = () => {
     const { colors, borderRadius, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
+    const { data: summary, isLoading, error, reload } = useAITool((refresh) =>
+        AIService.getSummary(aiDocument.id, refresh)
+    );
+
+    const handleShare = () => {
+        if (!summary) return;
+        const body = [
+            aiDocument.title,
+            '',
+            summary.overview,
+            ...summary.sections.flatMap((s) => ['', s.title.toUpperCase(), ...s.points.map((p) => `• ${p}`)]),
+            ...(summary.formulas.length
+                ? ['', 'FORMULAS', ...summary.formulas.map((f) => `• ${f.title}: ${f.formula}`)]
+                : []),
+        ].join('\n');
+        Share.share({ title: `${aiDocument.title} summary`, message: body }).catch(() => {});
+    };
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -38,6 +53,8 @@ export const SummaryScreen: React.FC = () => {
                     Smart Summary
                 </Text>
                 <TouchableOpacity
+                    onPress={handleShare}
+                    disabled={!summary}
                     style={styles.headerButton}
                     accessibilityRole="button"
                     accessibilityLabel="Share summary"
@@ -46,6 +63,11 @@ export const SummaryScreen: React.FC = () => {
                 </TouchableOpacity>
             </View>
 
+            {isLoading ? (
+                <AILoading message="Summarizing your document..." />
+            ) : error || !summary ? (
+                <AIError message={error || 'No summary was returned.'} onRetry={() => reload(true)} />
+            ) : (
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
@@ -69,10 +91,10 @@ export const SummaryScreen: React.FC = () => {
                             style={[styles.metaTitle, { color: colors.text, fontSize: typography.fontSize.md }]}
                             numberOfLines={1}
                         >
-                            {mockSummaryMeta.documentTitle}
+                            {aiDocument.title}
                         </Text>
                         <Text style={[styles.metaSub, { color: colors.textMuted }]}>
-                            {mockSummaryMeta.subject} • {mockSummaryMeta.readTime}
+                            {aiDocument.subject} • {summary.readTime}
                         </Text>
                     </View>
                     <View style={[styles.aiBadge, { backgroundColor: `${colors.secondary}1F` }]}>
@@ -99,28 +121,43 @@ export const SummaryScreen: React.FC = () => {
                             { color: colors.text, fontSize: typography.fontSize.sm + 1 },
                         ]}
                     >
-                        {mockSummaryOverview}
+                        {summary.overview}
                     </Text>
                 </View>
 
-                {/* Formula rail */}
-                <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>FORMULA CARDS</Text>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.formulaRail}
-                >
-                    {mockFormulas.map((formula) => (
-                        <FormulaCard key={formula.id} formula={formula} />
-                    ))}
-                </ScrollView>
+                {/* Formula rail (only when the document has formulas) */}
+                {summary.formulas.length > 0 && (
+                    <>
+                        <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>FORMULA CARDS</Text>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.formulaRail}
+                        >
+                            {summary.formulas.map((formula) => (
+                                <FormulaCard key={formula.id} formula={formula} />
+                            ))}
+                        </ScrollView>
+                    </>
+                )}
 
                 {/* Expandable sections */}
                 <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>BREAKDOWN</Text>
-                {mockSummarySections.map((section, index) => (
+                {summary.sections.map((section, index) => (
                     <SummaryCard key={section.id} section={section} initiallyExpanded={index === 0} />
                 ))}
+
+                <TouchableOpacity
+                    onPress={() => reload(true)}
+                    style={styles.regenerateButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Regenerate summary"
+                >
+                    <MaterialCommunityIcons name="refresh" size={16} color={colors.textMuted} />
+                    <Text style={[styles.regenerateText, { color: colors.textMuted }]}>Regenerate summary</Text>
+                </TouchableOpacity>
             </ScrollView>
+            )}
         </View>
     );
 };
@@ -128,6 +165,18 @@ export const SummaryScreen: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+    },
+    regenerateButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 14,
+        marginTop: 8,
+    },
+    regenerateText: {
+        fontSize: 13,
+        fontWeight: '600',
     },
     header: {
         flexDirection: 'row',

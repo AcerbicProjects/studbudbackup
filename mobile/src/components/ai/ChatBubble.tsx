@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
-import { ChatMessage } from '../../data/mockAIData';
+import { ChatMessage } from '../../types/ai';
 
 interface ChatBubbleProps {
     message: ChatMessage;

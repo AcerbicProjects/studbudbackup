@@ -14,74 +14,83 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
-import { AIStackParamList } from '../../types/ai';
+import { AIStackParamList, ChatMessage } from '../../types/ai';
 import ChatBubble from '../../components/ai/ChatBubble';
 import MessageInput from '../../components/ai/MessageInput';
 import TypingIndicator from '../../components/ai/TypingIndicator';
-import {
-    ChatMessage,
-    mockChatMessages,
-    mockSuggestedPrompts,
-    mockCannedResponses,
-} from '../../data/mockAIData';
+import AIService from '../../services/AIService';
+import { getErrorMessage } from '../../services/DocumentService';
+import { useAIDocument } from '../../context/AIDocumentContext';
 
-// AI Chat — ask questions about the uploaded notes.
-// Week 1: runs fully on mock data; a canned response is appended after a short
-// "typing" delay to demo the flow. Real /chat endpoint arrives in Week 3.
+const SUGGESTED_PROMPTS = [
+    'Summarize this in 5 points',
+    'Explain the hardest concept simply',
+    'Give me an example problem',
+    'What should I memorize for the exam?',
+];
+
+const makeMessage = (role: ChatMessage['role'], text: string): ChatMessage => ({
+    id: `${role[0]}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    role,
+    text,
+    timestamp: new Date().toISOString(),
+});
+
+// AI Chat — ask questions about the selected document. Answers come from the
+// backend, which sends the document text and the recent conversation to the AI.
 export const ChatScreen: React.FC = () => {
     const { colors, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
 
-    const [messages, setMessages] = useState<ChatMessage[]>(mockChatMessages);
+    const [messages, setMessages] = useState<ChatMessage[]>(() => [
+        makeMessage(
+            'ai',
+            `Hi! I've read **${aiDocument.title}**. Ask me anything about it and I'll explain it from your notes.`
+        ),
+    ]);
     const [isTyping, setIsTyping] = useState(false);
     const listRef = useRef<FlatList<ChatMessage>>(null);
-    const responseIndex = useRef(0);
 
     const scrollToEnd = () => {
         // Give the list a beat to render the new row first
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
     };
 
-    const handleSend = (text: string) => {
-        const userMessage: ChatMessage = {
-            id: `u-${Date.now()}`,
-            role: 'user',
-            text,
-            timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, userMessage]);
+    // Ask the AI and return its reply, or a friendly error to show in the chat
+    const askAI = async (text: string, history: ChatMessage[]) => {
+        try {
+            return await AIService.chat(aiDocument.id, text, history);
+        } catch (err) {
+            return `⚠️ ${getErrorMessage(err, 'I could not reach the AI right now. Please try again.')}`;
+        }
+    };
+
+    const handleSend = async (text: string) => {
+        if (isTyping) return;
+        const history = messages;
+        setMessages((prev) => [...prev, makeMessage('user', text)]);
         setIsTyping(true);
         scrollToEnd();
 
-        // Mock AI reply (Week 1) — cycles through canned responses
-        setTimeout(() => {
-            const reply: ChatMessage = {
-                id: `a-${Date.now()}`,
-                role: 'ai',
-                text: mockCannedResponses[responseIndex.current % mockCannedResponses.length],
-                timestamp: new Date().toISOString(),
-            };
-            responseIndex.current += 1;
-            setIsTyping(false);
-            setMessages((prev) => [...prev, reply]);
-            scrollToEnd();
-        }, 1600);
+        const reply = await askAI(text, history);
+        setIsTyping(false);
+        setMessages((prev) => [...prev, makeMessage('ai', reply)]);
+        scrollToEnd();
     };
 
-    const handleRegenerate = (messageId: string) => {
-        setMessages((prev) => {
-            const target = prev.find((m) => m.id === messageId);
-            if (!target || target.role !== 'ai') return prev;
-            return prev.map((m) =>
-                m.id === messageId
-                    ? {
-                          ...m,
-                          text: mockCannedResponses[(responseIndex.current++) % mockCannedResponses.length],
-                      }
-                    : m
-            );
-        });
+    const handleRegenerate = async (messageId: string) => {
+        if (isTyping) return;
+        const index = messages.findIndex((m) => m.id === messageId);
+        // Re-ask the user question that produced this answer
+        const questionIndex = messages.slice(0, index).map((m) => m.role).lastIndexOf('user');
+        if (index < 0 || questionIndex < 0) return;
+
+        setIsTyping(true);
+        const reply = await askAI(messages[questionIndex].text, messages.slice(0, questionIndex));
+        setIsTyping(false);
+        setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, text: reply } : m)));
     };
 
     return (
@@ -103,8 +112,8 @@ export const ChatScreen: React.FC = () => {
                     </Text>
                     <View style={styles.headerSubRow}>
                         <View style={[styles.onlineDot, { backgroundColor: colors.accent }]} />
-                        <Text style={[styles.headerSub, { color: colors.textMuted }]}>
-                            Physics Notes Chapter 4
+                        <Text style={[styles.headerSub, { color: colors.textMuted }]} numberOfLines={1}>
+                            {aiDocument.title}
                         </Text>
                     </View>
                 </View>
@@ -137,7 +146,7 @@ export const ChatScreen: React.FC = () => {
                             <View style={styles.typingWrap}>
                                 <TypingIndicator />
                             </View>
-                        ) : null
+                        ) : undefined
                     }
                     showsVerticalScrollIndicator={false}
                 />
@@ -148,7 +157,7 @@ export const ChatScreen: React.FC = () => {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.promptsRow}
                 >
-                    {mockSuggestedPrompts.map((prompt) => (
+                    {SUGGESTED_PROMPTS.map((prompt) => (
                         <TouchableOpacity
                             key={prompt}
                             style={[

@@ -7,46 +7,75 @@ interface LampRopeProps {
     onPullTrigger: () => void;
 }
 
+// Pull distance (finger movement) that flips the theme mid-gesture
+const PULL_THRESHOLD = 40;
+// A touch that barely moves counts as a tap on the knob
+const TAP_SLOP = 8;
+
 export const LampRope: React.FC<LampRopeProps> = ({ onPullTrigger }) => {
-    const { theme, colors, isDark } = useTheme();
+    const { isDark } = useTheme();
 
     // Animation values
     const pullOffset = useRef(new Animated.Value(0)).current;   // How far the pull rope is dragged down
     const lampGlow = useRef(new Animated.Value(isDark ? 0.8 : 0)).current; // Glow opacity
 
+    // The pan responder is created once, so read the latest callback through a ref
+    const triggerRef = useRef(onPullTrigger);
+    triggerRef.current = onPullTrigger;
+    const firedRef = useRef(false);
+
     // Track dynamic changes in theme inside animations
     useEffect(() => {
         Animated.timing(lampGlow, {
             toValue: isDark ? 0.9 : 0.05,
-            duration: 600,
+            duration: 350,
             useNativeDriver: true,
         }).start();
     }, [isDark]);
 
+    const springBack = () => {
+        Animated.spring(pullOffset, {
+            toValue: 0,
+            friction: 6,
+            tension: 120,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const fire = () => {
+        if (firedRef.current) return;
+        firedRef.current = true;
+        // Let the rope animation start on the native thread before the app re-renders
+        requestAnimationFrame(() => triggerRef.current());
+    };
+
     const panResponder = useRef(
         PanResponder.create({
+            // Claim the touch before the surrounding ScrollView can, and never hand it back
             onStartShouldSetPanResponder: () => true,
+            onStartShouldSetPanResponderCapture: () => true,
+            onMoveShouldSetPanResponderCapture: () => true,
+            onPanResponderTerminationRequest: () => false,
+            onShouldBlockNativeResponder: () => true,
+            onPanResponderGrant: () => {
+                firedRef.current = false;
+                pullOffset.stopAnimation();
+            },
             onPanResponderMove: (e: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-                // Only allow pulling down (positive dy)
-                if (gestureState.dy > 0) {
-                    // Add resistance/damping to the pull
-                    pullOffset.setValue(gestureState.dy * 0.6);
+                // Only allow pulling down (positive dy), with a little resistance
+                pullOffset.setValue(Math.max(0, gestureState.dy) * 0.6);
+                // Flip as soon as the rope is pulled far enough, like a real switch
+                if (gestureState.dy > PULL_THRESHOLD) {
+                    fire();
                 }
             },
             onPanResponderRelease: (e: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-                // Trigger theme change if pulled down sufficiently (e.g. > 55px)
-                if (gestureState.dy > 55) {
-                    onPullTrigger();
+                springBack();
+                if (Math.abs(gestureState.dy) < TAP_SLOP && Math.abs(gestureState.dx) < TAP_SLOP) {
+                    fire();
                 }
-
-                // Animate pull rope back to resting position
-                Animated.spring(pullOffset, {
-                    toValue: 0,
-                    friction: 5,
-                    tension: 40,
-                    useNativeDriver: true,
-                }).start();
             },
+            onPanResponderTerminate: springBack,
         })
     ).current;
 
@@ -79,6 +108,12 @@ export const LampRope: React.FC<LampRopeProps> = ({ onPullTrigger }) => {
                         styles.pullCableContainer,
                         { transform: [{ translateY: pullOffset }] },
                     ]}
+                    hitSlop={{ top: 10, bottom: 20, left: 16, right: 16 }}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Toggle dark mode"
+                    accessibilityState={{ checked: isDark }}
+                    accessibilityActions={[{ name: 'activate' }]}
+                    onAccessibilityAction={() => triggerRef.current()}
                     {...panResponder.panHandlers}
                 >
                     {/* Pull cable extension */}

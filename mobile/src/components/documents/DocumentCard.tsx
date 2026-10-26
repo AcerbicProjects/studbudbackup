@@ -2,8 +2,14 @@ import React, { useRef } from 'react';
 import { StyleSheet, Text, View, Image, TouchableOpacity, Animated, Share, Alert } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import {
+    StudyDocument,
+    formatFileSize,
+    formatRelativeTime,
+    formatStudyTime,
+} from '../../services/DocumentService';
 
-export type DocumentMock = {
+export type DocumentCardData = {
     id: string;
     title: string;
     subject: string;
@@ -13,18 +19,38 @@ export type DocumentMock = {
     progress: number;
     favorite: boolean;
     fileSize?: string;
+    icon: string;
 };
 
+// Icon that matches what the user actually uploaded
+export const getDocumentIcon = (mimeType: string) =>
+    mimeType === 'application/pdf' ? 'file-pdf-box' : mimeType.startsWith('image/') ? 'file-image' : 'file-document';
+
+export const toCardData = (doc: StudyDocument): DocumentCardData => ({
+    id: doc._id,
+    title: doc.title,
+    subject: doc.subject,
+    pages: doc.pages,
+    lastOpened: formatRelativeTime(doc.lastOpened),
+    studyTime: formatStudyTime(doc.studySeconds),
+    progress: doc.progress,
+    favorite: doc.favorite,
+    fileSize: formatFileSize(doc.size),
+    icon: getDocumentIcon(doc.mimeType),
+});
+
 interface DocumentCardProps {
-    document: DocumentMock;
+    document: DocumentCardData;
     onPress: () => void;
+    onLongPress?: () => void;
     onFavoriteChange?: (id: string) => void;
-    onMenuPress?: (doc: DocumentMock) => void;
+    onMenuPress?: (doc: DocumentCardData) => void;
 }
 
 export const DocumentCard: React.FC<DocumentCardProps> = ({
     document,
     onPress,
+    onLongPress,
     onFavoriteChange,
     onMenuPress
 }) => {
@@ -94,6 +120,8 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
             <TouchableOpacity
                 activeOpacity={1} // Disable default opacity since we handle tilt and scale
                 onPress={onPress}
+                onLongPress={onLongPress}
+                delayLongPress={400}
                 style={styles.touchArea}
             >
                 {/* Document Header Representation (Thumbnail preview mockup) */}
@@ -102,7 +130,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
                         colors={['transparent', 'rgba(0,0,0,0.06)']}
                         style={StyleSheet.absoluteFill}
                     />
-                    <MaterialCommunityIcons name="file-pdf-box" size={48} color={subjColor} />
+                    <MaterialCommunityIcons name={document.icon as any} size={48} color={subjColor} />
 
                     {/* Subject badge indicator */}
                     <View style={[styles.subjectBadge, { backgroundColor: subjColor }]}>
@@ -133,7 +161,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
 
                     {/* Document metadata info line */}
                     <Text style={[styles.metadataText, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
-                        {document.pages} Pages • Last read {document.lastOpened} • {document.studyTime}
+                        {document.pages} {document.pages === 1 ? 'Page' : 'Pages'} • Last read {document.lastOpened}{document.fileSize ? ` • ${document.fileSize}` : ''}
                     </Text>
 
                     {/* Progress bar widget */}

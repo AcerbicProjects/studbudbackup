@@ -1,46 +1,51 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, FlatList, TouchableOpacity, Dimensions } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Custom sub-components
-import AnimatedStudyDesk from '../../components/documents/AnimatedStudyDesk';
+import AnimatedStudyDesk, { BuddyMode } from '../../components/documents/AnimatedStudyDesk';
+import TodayGoalsCard from '../../components/study/TodayGoalsCard';
+import { useStudyProgress } from '../../context/StudyProgressContext';
 import LampRope from '../../components/documents/LampRope';
 import QuoteCard from '../../components/documents/QuoteCard';
 import SearchBar from '../../components/documents/SearchBar';
 import WeeklyProgressRing from '../../components/documents/WeeklyProgressRing';
-import DocumentCard, { DocumentMock } from '../../components/documents/DocumentCard';
-
-// Mock data list
-import { documents as mockDocs } from '../../data/documents';
-
-const SUBJECTS = [
-    { id: '1', name: 'Mathematics', icon: 'calculator' },
-    { id: '2', name: 'Physics', icon: 'atom' },
-    { id: '3', name: 'Chemistry', icon: 'flask' },
-    { id: '5', name: 'Programming', icon: 'code-braces' },
-    { id: '6', name: 'AI', icon: 'robot-outline' },
-];
+import DocumentCard, { toCardData } from '../../components/documents/DocumentCard';
+import SubjectChips from '../../components/documents/SubjectChips';
+import { ALL_FOLDER, useDocuments, useConfirmDeleteDocument } from '../../context/DocumentsContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface HomeScreenProps {
     onNavigateToTab: (tabName: string) => void;
     onSelectDocument: (docId: string) => void;
+    onOpenTrack?: (date: string) => void;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelectDocument }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelectDocument, onOpenTrack }) => {
     const { colors, typography, borderRadius, toggleTheme, isDark } = useTheme();
     const insets = useSafeAreaInsets();
+    const { timer, celebrating } = useStudyProgress();
+
+    // The Studying Buddy mirrors the real timer state
+    const buddyMode: BuddyMode = celebrating ? 'completed'
+        : timer.phase === 'idle' ? 'idle'
+            : timer.paused ? 'paused'
+                : timer.phase === 'break' ? 'break' : 'studying';
 
     const [searchVal, setSearchVal] = useState('');
-    const [selectedSubj, setSelectedSubj] = useState('All');
-    const [docsList, setDocsList] = useState<DocumentMock[]>(mockDocs);
+    const { documents, toggleFavorite, selectedFolder } = useDocuments();
+    const confirmDelete = useConfirmDeleteDocument();
+    const { user } = useAuth();
+    const firstName = user?.fullName?.trim().split(/\s+/)[0] || 'there';
+
+    // Most recently opened first (the API already sorts by lastOpened)
+    const docsList = useMemo(() => documents.map(toCardData), [documents]);
 
     // Toggle favorite helper
     const handleFavoriteToggle = (id: string) => {
-        setDocsList((prev) =>
-            prev.map((doc) => (doc.id === id ? { ...doc, favorite: !doc.favorite } : doc))
-        );
+        toggleFavorite(id);
     };
 
     return (
@@ -63,6 +68,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 <WeeklyProgressRing />
             </View>
 
+            {/* Today's goals (planned in Track) + daily reminder */}
+            <TodayGoalsCard onOpenTrack={(date) => (onOpenTrack ? onOpenTrack(date) : onNavigateToTab('Progress'))} />
+
             {/* --- HERO HERO HERO (Animated Study Desk + Lamp theme Toggle) --- */}
             <View style={[styles.heroBlock, { backgroundColor: isDark ? 'rgba(30, 41, 59, 0.25)' : 'rgba(255,255,255,0.45)', borderRadius: borderRadius.xl }]}>
 
@@ -72,7 +80,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 </View>
 
                 {/* Floating elements styling desk layout */}
-                <AnimatedStudyDesk />
+                <AnimatedStudyDesk mode={buddyMode} />
             </View>
 
             {/* --- WELCOME BANNER --- */}
@@ -81,7 +89,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                     {isDark ? 'Good Evening,' : 'Good Morning,'}
                 </Text>
                 <Text style={[styles.studName, { color: colors.text, fontSize: typography.fontSize.xl + 4 }]}>
-                    Alex 👋
+                    {firstName} 👋
                 </Text>
                 <Text style={[styles.studSubtitle, { color: colors.textMuted, fontSize: typography.fontSize.sm }]}>
                     Ready to continue your study session?
@@ -105,48 +113,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 </Text>
             </View>
 
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScrollPadding}
-            >
-                <TouchableOpacity
-                    onPress={() => setSelectedSubj('All')}
-                    style={[
-                        styles.chip,
-                        {
-                            backgroundColor: selectedSubj === 'All' ? '#8B5CF6' : colors.card,
-                            borderColor: colors.border,
-                            borderRadius: borderRadius.md,
-                        }
-                    ]}
-                >
-                    <Text style={[styles.chipText, { color: selectedSubj === 'All' ? '#FFF' : colors.text }]}>All</Text>
-                </TouchableOpacity>
-
-                {SUBJECTS.map((subj) => {
-                    const isSelected = selectedSubj === subj.name;
-
-                    return (
-                        <TouchableOpacity
-                            key={subj.id}
-                            onPress={() => setSelectedSubj(subj.name)}
-                            style={[
-                                styles.chip,
-                                {
-                                    backgroundColor: isSelected ? '#8B5CF6' : colors.card,
-                                    borderColor: colors.border,
-                                    borderRadius: borderRadius.md,
-                                }
-                            ]}
-                        >
-                            <Text style={[styles.chipText, { color: isSelected ? '#FFF' : colors.text }]}>
-                                {subj.name}
-                            </Text>
-                        </TouchableOpacity>
-                    );
-                })}
-            </ScrollView>
+            <SubjectChips />
+            <Text style={[styles.folderHint, { color: colors.textMuted, fontSize: typography.fontSize.xs }]}>
+                {selectedFolder === ALL_FOLDER
+                    ? 'Pick a subject to save new scans and uploads into it. Hold a subject or document to remove it.'
+                    : `New scans and uploads go into ${selectedFolder}. Hold a subject or document to remove it.`}
+            </Text>
 
             {/* --- RECENT DOCUMENTS ROW --- */}
             <View style={styles.secHeaderRow}>
@@ -165,15 +137,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 data={docsList.filter(d =>
-                    (selectedSubj === 'All' || d.subject === selectedSubj) &&
+                    (selectedFolder === ALL_FOLDER || d.subject === selectedFolder) &&
                     d.title.toLowerCase().includes(searchVal.toLowerCase())
-                )}
+                ).slice(0, 10)}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                     <View style={styles.cardItemSpacing}>
                         <DocumentCard
                             document={item}
                             onPress={() => onSelectDocument(item.id)}
+                            onLongPress={() => confirmDelete(item.id, item.title)}
+                            onMenuPress={(doc) => confirmDelete(doc.id, doc.title)}
                             onFavoriteChange={handleFavoriteToggle}
                         />
                     </View>
@@ -181,7 +155,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigateToTab, onSelec
                 ListEmptyComponent={
                     <View style={[styles.emptyContent, { backgroundColor: colors.card, borderRadius: borderRadius.lg }]}>
                         <Text style={[styles.emptyText, { color: colors.textMuted, fontSize: typography.fontSize.sm }]}>
-                            No matching notes found. Try uploading one!
+                            {documents.length === 0
+                                ? 'No documents yet. Upload a PDF or scan your notes!'
+                                : 'No matching notes found.'}
                         </Text>
                     </View>
                 }
@@ -278,6 +254,11 @@ const styles = StyleSheet.create({
     chipText: {
         fontWeight: '700',
         fontSize: 13,
+    },
+    folderHint: {
+        fontWeight: '500',
+        paddingHorizontal: 4,
+        marginBottom: 12,
     },
     cardItemSpacing: {
         width: 200,

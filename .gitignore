@@ -40,3 +40,6 @@ yarn-error.log*
 
 # Testing
 coverage/
+
+# Portable local MongoDB (binaries + data)
+mongodb/

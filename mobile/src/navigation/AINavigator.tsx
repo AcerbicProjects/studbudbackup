@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../constants/theme';
 import { AIStackParamList } from '../types/ai';
+import { AIDocument, AIDocumentProvider, useAIDocument } from '../context/AIDocumentContext';
 import ChatScreen from '../screens/ai/ChatScreen';
 import SummaryScreen from '../screens/ai/SummaryScreen';
 import FlashcardsScreen from '../screens/ai/FlashcardsScreen';
@@ -45,6 +46,7 @@ const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
     const { colors, borderRadius, typography, shadows } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
@@ -79,6 +81,9 @@ const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
                     </Text>
                     <Text style={[styles.heroSub, { color: colors.textMuted }]}>
                         Supercharge your learning with AI-powered tools
+                    </Text>
+                    <Text style={[styles.heroDoc, { color: colors.primary }]} numberOfLines={1}>
+                        {aiDocument.title}
                     </Text>
                 </View>
 
@@ -116,11 +121,13 @@ const AIHomeScreen: React.FC<AIHomeScreenProps> = ({ onBack }) => {
 };
 
 interface AINavigatorProps {
+    document: AIDocument;
     onBack?: () => void;
 }
 
-export const AINavigator: React.FC<AINavigatorProps> = ({ onBack }) => {
+export const AINavigator: React.FC<AINavigatorProps> = ({ document, onBack }) => {
     return (
+        <AIDocumentProvider value={document}>
         <Stack.Navigator
             initialRouteName="AIHome"
             screenOptions={{
@@ -138,6 +145,7 @@ export const AINavigator: React.FC<AINavigatorProps> = ({ onBack }) => {
             <Stack.Screen name="QuizResult" component={QuizResultScreen} />
             <Stack.Screen name="Viva" component={VivaScreen} />
         </Stack.Navigator>
+        </AIDocumentProvider>
     );
 };
 
@@ -181,6 +189,12 @@ const styles = StyleSheet.create({
     heroSub: {
         fontSize: 13,
         marginTop: 4,
+    },
+    heroDoc: {
+        fontSize: 12,
+        fontWeight: '700',
+        marginTop: 8,
+        paddingHorizontal: 24,
     },
     toolCard: {
         flexDirection: 'row',

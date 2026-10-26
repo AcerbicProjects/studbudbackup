@@ -1,23 +1,15 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Dimensions, RefreshControl, ActivityIndicator } from 'react-native';
 import { useTheme } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import SearchBar from '../../components/documents/SearchBar';
-import DocumentCard, { DocumentMock } from '../../components/documents/DocumentCard';
-import { documents as mockDocs } from '../../data/documents';
+import SubjectChips from '../../components/documents/SubjectChips';
+import DocumentCard, { DocumentCardData, toCardData } from '../../components/documents/DocumentCard';
+import { ALL_FOLDER, useDocuments, useConfirmDeleteDocument } from '../../context/DocumentsContext';
 
 const { width } = Dimensions.get('window');
-
-const SUBJECT_CATEGORIES = [
-    'All',
-    'Mathematics',
-    'Physics',
-    'Chemistry',
-    'Programming',
-    'AI',
-];
 
 interface DocumentsScreenProps {
     onSelectDocument: (docId: string) => void;
@@ -26,16 +18,27 @@ interface DocumentsScreenProps {
 export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocument }) => {
     const { colors, typography, borderRadius } = useTheme();
     const insets = useSafeAreaInsets();
+    const { documents, isLoading, error, refresh, toggleFavorite, selectedFolder: activeCategory } = useDocuments();
+    const confirmDelete = useConfirmDeleteDocument();
 
-    const [activeCategory, setActiveCategory] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
     const [isGridView, setIsGridView] = useState(false);
-    const [documentsState, setDocumentsState] = useState<DocumentMock[]>(mockDocs);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const documentsState = useMemo(() => documents.map(toCardData), [documents]);
 
     const handleFavoriteToggle = (id: string) => {
-        setDocumentsState((prev) =>
-            prev.map((doc) => (doc.id === id ? { ...doc, favorite: !doc.favorite } : doc))
-        );
+        toggleFavorite(id);
+    };
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true);
+        await refresh();
+        setIsRefreshing(false);
+    };
+
+    const handleMenuPress = (doc: DocumentCardData) => {
+        confirmDelete(doc.id, doc.title);
     };
 
     const getSubjectColor = (subj: string) => {
@@ -50,7 +53,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
     };
 
     const filteredCollection = documentsState.filter((doc) => {
-        const matchesCategory = activeCategory === 'All' || doc.subject === activeCategory;
+        const matchesCategory = activeCategory === ALL_FOLDER || doc.subject === activeCategory;
         const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
     });
@@ -86,34 +89,8 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                     </TouchableOpacity>
                 </View>
 
-                {/* Horizontal filters tags scroll */}
-                <FlatList
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    data={SUBJECT_CATEGORIES}
-                    keyExtractor={(item) => item}
-                    style={styles.tagsScroll}
-                    renderItem={({ item }) => {
-                        const isSelected = activeCategory === item;
-                        return (
-                            <TouchableOpacity
-                                onPress={() => setActiveCategory(item)}
-                                style={[
-                                    styles.filterTag,
-                                    {
-                                        backgroundColor: isSelected ? '#8B5CF6' : colors.card,
-                                        borderColor: colors.border,
-                                        borderRadius: borderRadius.sm,
-                                    }
-                                ]}
-                            >
-                                <Text style={[styles.tagLabel, { color: isSelected ? '#FFF' : colors.text }]}>
-                                    {item}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
+                {/* Subject folders (shared with Home; hold to remove, + to add) */}
+                <SubjectChips />
             </View>
 
             {/* Grid vs List FlatList rendering */}
@@ -132,6 +109,8 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                             <TouchableOpacity
                                 activeOpacity={0.8}
                                 onPress={() => onSelectDocument(item.id)}
+                                onLongPress={() => confirmDelete(item.id, item.title)}
+                                delayLongPress={400}
                                 style={[
                                     styles.gridItem,
                                     {
@@ -142,7 +121,7 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                                 ]}
                             >
                                 <View style={[styles.gridThumb, { backgroundColor: colors.inputBg }]}>
-                                    <MaterialCommunityIcons name="file-pdf-box" size={32} color={subjColor} />
+                                    <MaterialCommunityIcons name={item.icon as any} size={32} color={subjColor} />
                                 </View>
                                 <Text numberOfLines={1} style={[styles.gridTitle, { color: colors.text, fontSize: typography.fontSize.xs + 1 }]}>
                                     {item.title}
@@ -160,17 +139,38 @@ export const DocumentsScreen: React.FC<DocumentsScreenProps> = ({ onSelectDocume
                             document={item}
                             onPress={() => onSelectDocument(item.id)}
                             onFavoriteChange={handleFavoriteToggle}
+                            onLongPress={() => confirmDelete(item.id, item.title)}
+                            onMenuPress={handleMenuPress}
                         />
                     );
                 }}
+                refreshControl={
+                    <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#8B5CF6" colors={['#8B5CF6']} />
+                }
                 ListEmptyComponent={
-                    <View style={styles.emptyView}>
-                        <MaterialCommunityIcons name="file-search-outline" size={44} color={colors.textMuted} />
-                        <Text style={[styles.emptyHeader, { color: colors.text }]}>No Documents Found</Text>
-                        <Text style={[styles.emptySubText, { color: colors.textMuted }]}>
-                            Try uploading new syllabus materials to populate this shelf.
-                        </Text>
-                    </View>
+                    isLoading ? (
+                        <View style={styles.emptyView}>
+                            <ActivityIndicator size="large" color="#8B5CF6" />
+                        </View>
+                    ) : (
+                        <View style={styles.emptyView}>
+                            <MaterialCommunityIcons
+                                name={error ? 'cloud-alert' : 'file-search-outline'}
+                                size={44}
+                                color={colors.textMuted}
+                            />
+                            <Text style={[styles.emptyHeader, { color: colors.text }]}>
+                                {error ? 'Could Not Load Documents' : 'No Documents Found'}
+                            </Text>
+                            <Text style={[styles.emptySubText, { color: colors.textMuted }]}>
+                                {error
+                                    ? `${error} Pull down to try again.`
+                                    : documents.length === 0
+                                        ? 'Upload a PDF or scan your notes to populate this shelf.'
+                                        : 'No documents match this search or subject.'}
+                            </Text>
+                        </View>
+                    )
                 }
             />
         </View>

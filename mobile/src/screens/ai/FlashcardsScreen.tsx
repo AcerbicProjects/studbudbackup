@@ -1,23 +1,37 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../../constants/theme';
-import { AIStackParamList } from '../../types/ai';
+import { AIStackParamList, FlashcardData } from '../../types/ai';
 import Flashcard from '../../components/ai/Flashcard';
-import { FlashcardData, mockFlashcards } from '../../data/mockAIData';
+import { AILoading, AIError } from '../../components/ai/AIStatus';
+import AIService from '../../services/AIService';
+import { useAIDocument } from '../../context/AIDocumentContext';
+import useAITool from '../../hooks/useAITool';
 
-// Flashcards — active recall deck with flip, bookmark, shuffle and progress.
-// Week 1: previous/next buttons; swipe gestures land in Week 2.
+// Flashcards — active recall deck generated from the document, with flip,
+// bookmark, shuffle and progress.
 export const FlashcardsScreen: React.FC = () => {
     const { colors, borderRadius, typography } = useTheme();
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<AIStackParamList>>();
+    const aiDocument = useAIDocument();
+    const { data, isLoading, error, reload } = useAITool((refresh) =>
+        AIService.getFlashcards(aiDocument.id, refresh)
+    );
 
-    const [cards, setCards] = useState<FlashcardData[]>(mockFlashcards);
+    const [cards, setCards] = useState<FlashcardData[]>([]);
     const [index, setIndex] = useState(0);
+
+    useEffect(() => {
+        if (data) {
+            setCards(data);
+            setIndex(0);
+        }
+    }, [data]);
 
     const card = cards[index];
     const progress = ((index + 1) / cards.length) * 100;
@@ -68,6 +82,12 @@ export const FlashcardsScreen: React.FC = () => {
                 </TouchableOpacity>
             </View>
 
+            {error || (!isLoading && !data?.length) ? (
+                <AIError message={error || 'No flashcards were returned.'} onRetry={() => reload(true)} />
+            ) : isLoading || !card ? (
+                <AILoading message="Creating flashcards from your notes..." />
+            ) : (
+            <>
             {/* Progress */}
             <View style={styles.progressSection}>
                 <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
@@ -128,6 +148,8 @@ export const FlashcardsScreen: React.FC = () => {
                     <MaterialCommunityIcons name="arrow-right" size={22} color="#FFF" />
                 </TouchableOpacity>
             </View>
+            </>
+            )}
         </View>
     );
 };

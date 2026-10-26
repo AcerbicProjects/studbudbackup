@@ -1,6 +1,10 @@
 import { Schema, model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export const DEFAULT_SUBJECTS = ['Mathematics', 'Physics', 'Chemistry', 'Programming', 'AI'];
+// Catch-all folder that always exists and cannot be removed
+export const GENERAL_SUBJECT = 'General';
+
 const userSchema = new Schema(
   {
     fullName: {
@@ -44,6 +48,11 @@ const userSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    // Subject folders shown on Home; documents are filed under one of these (or "General")
+    subjects: {
+      type: [String],
+      default: () => [...DEFAULT_SUBJECTS],
     },
   },
   {
